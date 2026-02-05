@@ -1,0 +1,22 @@
+{
+  "name": "@mlightcad/cad-simple-viewer-example",
+  "private": true,
+  "version": "1.4.7",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mlightcad/cad-viewer.git"
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "clean": "rimraf dist lib tsconfig.tsbuildinfo",
+    "dev": "vite",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix --quiet src/",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mlightcad/cad-simple-viewer": "workspace:*",
+    "@mlightcad/data-model": "^1.6.10"
+  }
+}
