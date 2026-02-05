@@ -8,6 +8,11 @@ import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
 import * as XLSX from 'xlsx';
 
+// Univer CSS imports
+import '@univerjs/design/lib/index.css';
+import '@univerjs/ui/lib/index.css';
+import '@univerjs/sheets-ui/lib/index.css';
+
 import './ExcelViewer.css';
 
 interface LoadingState {
