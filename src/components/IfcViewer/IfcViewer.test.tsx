@@ -1,90 +1,72 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen} from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { IfcViewer } from './IfcViewer'
 
-// Create mock classes for Three.js
-class MockVector3 {
-  set = vi.fn().mockReturnThis()
-  copy = vi.fn().mockReturnThis()
-}
+// Mock Three.js with inline classes
+vi.mock('three', () => {
+  const mockFn = () => ({})
 
-class MockBox3 {
-  setFromObject = vi.fn().mockReturnThis()
-  getCenter = vi.fn(() => new MockVector3())
-  getSize = vi.fn(() => new MockVector3())
-}
-
-class MockMatrix4 {
-  fromArray = vi.fn()
-}
-
-class MockBufferGeometry {
-  setAttribute = vi.fn()
-  setIndex = vi.fn()
-  applyMatrix4 = vi.fn()
-  dispose = vi.fn()
-}
-
-class MockMesh {
-  castShadow = false
-  receiveShadow = false
-  geometry = { dispose: vi.fn() }
-  material = { dispose: vi.fn() }
-}
-
-class MockGroup {
-  children: unknown[] = []
-  add = vi.fn()
-  remove = vi.fn()
-}
-
-class MockScene {
-  background = null
-  add = vi.fn()
-}
-
-class MockPerspectiveCamera {
-  position = { set: vi.fn() }
-  aspect = 1
-  updateProjectionMatrix = vi.fn()
-}
-
-class MockWebGLRenderer {
-  setSize = vi.fn()
-  setPixelRatio = vi.fn()
-  render = vi.fn()
-  dispose = vi.fn()
-  domElement = document.createElement('canvas')
-  shadowMap = { enabled: false, type: 0 }
-}
-
-class MockDirectionalLight {
-  position = { set: vi.fn() }
-  castShadow = false
-  shadow = { mapSize: { width: 0, height: 0 } }
-}
-
-// Mock Three.js
-vi.mock('three', () => ({
-  Vector3: MockVector3,
-  Box3: MockBox3,
-  Matrix4: MockMatrix4,
-  BufferAttribute: vi.fn(),
-  BufferGeometry: MockBufferGeometry,
-  MeshPhongMaterial: vi.fn(() => ({ dispose: vi.fn() })),
-  Mesh: MockMesh,
-  Group: MockGroup,
-  Scene: MockScene,
-  PerspectiveCamera: MockPerspectiveCamera,
-  WebGLRenderer: MockWebGLRenderer,
-  Color: vi.fn(),
-  AmbientLight: vi.fn(),
-  DirectionalLight: MockDirectionalLight,
-  GridHelper: vi.fn(),
-  AxesHelper: vi.fn(),
-  DoubleSide: 2,
-  PCFSoftShadowMap: 2,
-}))
+  return {
+    Vector3: vi.fn(function() {
+      return { set: vi.fn().mockReturnThis(), copy: vi.fn().mockReturnThis() }
+    }),
+    Box3: vi.fn(function() {
+      return {
+        setFromObject: vi.fn().mockReturnThis(),
+        getCenter: vi.fn(() => ({ set: vi.fn(), copy: vi.fn() })),
+        getSize: vi.fn(() => ({ set: vi.fn(), copy: vi.fn() })),
+      }
+    }),
+    Matrix4: vi.fn(function() {
+      return { fromArray: vi.fn() }
+    }),
+    BufferAttribute: vi.fn(),
+    BufferGeometry: vi.fn(function() {
+      return { setAttribute: vi.fn(), setIndex: vi.fn(), applyMatrix4: vi.fn(), dispose: vi.fn() }
+    }),
+    MeshPhongMaterial: vi.fn(() => ({ dispose: vi.fn() })),
+    Mesh: vi.fn(function() {
+      return {
+        castShadow: false,
+        receiveShadow: false,
+        geometry: { dispose: vi.fn() },
+        material: { dispose: vi.fn() },
+      }
+    }),
+    Group: vi.fn(function() {
+      return { children: [], add: vi.fn(), remove: vi.fn() }
+    }),
+    Scene: vi.fn(function() {
+      return { background: null, add: vi.fn() }
+    }),
+    PerspectiveCamera: vi.fn(function() {
+      return { position: { set: vi.fn() }, aspect: 1, updateProjectionMatrix: vi.fn() }
+    }),
+    WebGLRenderer: vi.fn(function() {
+      return {
+        setSize: vi.fn(),
+        setPixelRatio: vi.fn(),
+        render: vi.fn(),
+        dispose: vi.fn(),
+        domElement: document.createElement('canvas'),
+        shadowMap: { enabled: false, type: 0 },
+      }
+    }),
+    Color: vi.fn(),
+    AmbientLight: vi.fn(),
+    DirectionalLight: vi.fn(function() {
+      return {
+        position: { set: vi.fn() },
+        castShadow: false,
+        shadow: { mapSize: { width: 0, height: 0 } },
+      }
+    }),
+    GridHelper: vi.fn(),
+    AxesHelper: vi.fn(),
+    DoubleSide: 2,
+    PCFSoftShadowMap: 2,
+  }
+})
 
 // Mock OrbitControls
 vi.mock('three/addons/controls/OrbitControls.js', () => ({
