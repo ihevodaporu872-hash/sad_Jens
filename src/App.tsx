@@ -3,6 +3,7 @@ import { TabNavigation } from './components/Layout/TabNavigation';
 import { ExcelPage } from './pages/ExcelPage';
 import { PdfPage } from './pages/PdfPage';
 import { CadPage } from './pages/CadPage';
+import { IfcPage } from './pages/IfcPage';
 import './App.css';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
             <Route path="/excel" element={<ExcelPage />} />
             <Route path="/pdf" element={<PdfPage />} />
             <Route path="/cad" element={<CadPage />} />
+            <Route path="/ifc" element={<IfcPage />} />
           </Routes>
         </main>
       </div>

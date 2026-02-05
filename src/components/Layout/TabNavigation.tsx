@@ -22,6 +22,12 @@ export function TabNavigation() {
       >
         CAD
       </NavLink>
+      <NavLink
+        to="/ifc"
+        className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}
+      >
+        IFC
+      </NavLink>
     </nav>
   );
 }
