@@ -1,0 +1,60 @@
+/**
+ * Copyright 2023-present DreamNum Co., Ltd.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type { ArrayValueObject } from '../../../engine/value-object/array-value-object';
+import type { BaseValueObject, ErrorValueObject } from '../../../engine/value-object/base-value-object';
+import { getArrayValuesByAggregateIgnoreOptions, getQuartileExcResult } from '../../../basics/statistical';
+import { checkVariantsErrorIsStringToNumber } from '../../../engine/utils/check-variant-error';
+import { BaseFunction } from '../../base-function';
+
+export class QuartileExc extends BaseFunction {
+    override minParams = 2;
+
+    override maxParams = 2;
+
+    override calculate(array: BaseValueObject, quart: BaseValueObject): BaseValueObject {
+        const arrayValues = getArrayValuesByAggregateIgnoreOptions(array);
+
+        if (quart.isArray()) {
+            const resultArray = (quart as ArrayValueObject).mapValue((quartObject) => this._handleSingleObject(arrayValues, quartObject));
+
+            if ((resultArray as ArrayValueObject).getRowCount() === 1 && (resultArray as ArrayValueObject).getColumnCount() === 1) {
+                return (resultArray as ArrayValueObject).get(0, 0) as BaseValueObject;
+            }
+
+            return resultArray;
+        }
+
+        return this._handleSingleObject(arrayValues, quart);
+    }
+
+    private _handleSingleObject(array: number[] | ErrorValueObject, quart: BaseValueObject): BaseValueObject {
+        if (!Array.isArray(array)) {
+            return array as ErrorValueObject;
+        }
+
+        const { isError, errorObject, variants } = checkVariantsErrorIsStringToNumber(quart);
+
+        if (isError) {
+            return errorObject as ErrorValueObject;
+        }
+
+        const [quartObject] = variants as BaseValueObject[];
+        const quartValue = Math.floor(+quartObject.getValue());
+
+        return getQuartileExcResult(array, quartValue);
+    }
+}

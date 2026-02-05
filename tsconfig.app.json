@@ -5,24 +5,59 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@univerjs/core": ["packages/univer/core/src"],
+      "@univerjs/core/*": ["packages/univer/core/src/*"],
+      "@univerjs/design": ["packages/univer/design/src"],
+      "@univerjs/design/*": ["packages/univer/design/src/*"],
+      "@univerjs/sheets": ["packages/univer/sheets/src"],
+      "@univerjs/sheets/*": ["packages/univer/sheets/src/*"],
+      "@univerjs/sheets-ui": ["packages/univer/sheets-ui/src"],
+      "@univerjs/sheets-ui/*": ["packages/univer/sheets-ui/src/*"],
+      "@univerjs/sheets-formula": ["packages/univer/sheets-formula/src"],
+      "@univerjs/sheets-formula/*": ["packages/univer/sheets-formula/src/*"],
+      "@univerjs/sheets-numfmt": ["packages/univer/sheets-numfmt/src"],
+      "@univerjs/sheets-numfmt/*": ["packages/univer/sheets-numfmt/src/*"],
+      "@univerjs/ui": ["packages/univer/ui/src"],
+      "@univerjs/ui/*": ["packages/univer/ui/src/*"],
+      "@univerjs/engine-formula": ["packages/univer/engine-formula/src"],
+      "@univerjs/engine-formula/*": ["packages/univer/engine-formula/src/*"],
+      "@univerjs/engine-render": ["packages/univer/engine-render/src"],
+      "@univerjs/engine-render/*": ["packages/univer/engine-render/src/*"],
+      "@univerjs/drawing": ["packages/univer/drawing/src"],
+      "@univerjs/drawing/*": ["packages/univer/drawing/src/*"],
+      "@univerjs/themes": ["packages/univer/themes/src"],
+      "@univerjs/themes/*": ["packages/univer/themes/src/*"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
+    "verbatimModuleSyntax": false,
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
 
     /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "erasableSyntaxOnly": false,
+    "noFallthroughCasesInSwitch": false,
+    "noUncheckedSideEffectImports": false,
+    "noImplicitAny": false
   },
-  "include": ["src"]
+  "include": ["src", "packages/univer/*/src"],
+  "exclude": [
+    "packages/univer/*/__tests__",
+    "packages/univer/*/vitest.config.ts",
+    "packages/univer/*/*.test.ts",
+    "packages/univer/*/*.spec.ts",
+    "node_modules"
+  ]
 }

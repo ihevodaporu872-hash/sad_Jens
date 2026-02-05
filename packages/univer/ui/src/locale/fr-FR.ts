@@ -1,0 +1,102 @@
+/**
+ * Copyright 2023-present DreamNum Co., Ltd.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type enUS from './en-US';
+
+const locale: typeof enUS = {
+    toolbar: {
+        heading: {
+            normal: 'Normal',
+            title: 'Titre',
+            subTitle: 'Sous-titre',
+            1: 'Titre 1',
+            2: 'Titre 2',
+            3: 'Titre 3',
+            4: 'Titre 4',
+            5: 'Titre 5',
+            6: 'Titre 6',
+            tooltip: 'Définir un titre',
+        },
+    },
+    ribbon: {
+        start: 'Démarrer',
+        startDesc: 'Initialiser la feuille de calcul et définir les paramètres de base.',
+        insert: 'Insérer',
+        insertDesc: 'Insérer des lignes, des colonnes, des graphiques et divers autres éléments.',
+        formulas: 'Formules',
+        formulasDesc: 'Utiliser des fonctions et des formules pour les calculs de données.',
+        data: 'Données',
+        dataDesc: 'Gérer les données, y compris l\'importation, le tri et le filtrage.',
+        view: 'Vue',
+        viewDesc: 'Changer les modes d\'affichage et ajuster l\'effet d\'affichage.',
+        others: 'Autres',
+        othersDesc: 'Autres fonctions et paramètres.',
+        more: 'Plus',
+    },
+    fontFamily: {
+        'not-supported': 'Aucune police de ce type trouvée dans le système, utilisation de la police par défaut.',
+        arial: 'Arial',
+        'times-new-roman': 'Times New Roman',
+        tahoma: 'Tahoma',
+        verdana: 'Verdana',
+        'microsoft-yahei': 'Microsoft YaHei',
+        simsun: 'SimSun',
+        simhei: 'SimHei',
+        kaiti: 'Kaiti',
+        fangsong: 'FangSong',
+        nsimsun: 'NSimSun',
+        stxinwei: 'STXinwei',
+        stxingkai: 'STXingkai',
+        stliti: 'STLiti',
+    },
+    'shortcut-panel': {
+        title: 'Raccourcis',
+    },
+    shortcut: {
+        undo: 'Annuler',
+        redo: 'Refaire',
+        cut: 'Couper',
+        copy: 'Copier',
+        paste: 'Coller',
+        'shortcut-panel': 'Basculer le panneau de raccourcis',
+    },
+    'common-edit': 'Raccourcis d\'édition courants',
+    'toggle-shortcut-panel': 'Basculer le panneau de raccourcis',
+    clipboard: {
+        authentication: {
+            title: 'Permission refusée',
+            content: 'Veuillez autoriser Univer à accéder à votre presse-papiers.',
+        },
+    },
+    textEditor: {
+        formulaError: 'Veuillez entrer une formule valide, telle que =SOMME(A1)',
+        rangeError: 'Veuillez entrer une plage valide, telle que A1:B10',
+    },
+    rangeSelector: {
+        title: 'Sélectionner une plage de données',
+        addAnotherRange: 'Ajouter une plage',
+        buttonTooltip: 'Sélectionner une plage de données',
+        placeHolder: 'Sélectionner une plage ou entrer.',
+        confirm: 'Confirmer',
+        cancel: 'Annuler',
+    },
+    'global-shortcut': 'Raccourci global',
+    'zoom-slider': {
+        resetTo: 'Réinitialiser à',
+    },
+};
+
+export default locale;

@@ -1,0 +1,101 @@
+/**
+ * Copyright 2023-present DreamNum Co., Ltd.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type { Workbook } from '@univerjs/core';
+import type { IRenderContext, IRenderModule } from '@univerjs/engine-render';
+import type { IUniverSheetsUIConfig } from './config.schema';
+import { CellValueType, IConfigService, Inject, InterceptorEffectEnum, isRealNum, isTextFormat, numfmt, RxDisposable } from '@univerjs/core';
+import { INTERCEPTOR_POINT, SheetInterceptorService } from '@univerjs/sheets';
+import { SheetSkeletonManagerService } from '../services/sheet-skeleton-manager.service';
+import { SHEETS_UI_PLUGIN_CONFIG_KEY } from './config.schema';
+
+export class ForceStringRenderController extends RxDisposable implements IRenderModule {
+    constructor(
+        private readonly _context: IRenderContext<Workbook>,
+        @Inject(SheetSkeletonManagerService) private readonly _sheetSkeletonManagerService: SheetSkeletonManagerService,
+        @Inject(SheetInterceptorService) private readonly _sheetInterceptorService: SheetInterceptorService,
+        @IConfigService private readonly _configService: IConfigService
+    ) {
+        super();
+
+        this._initViewModelIntercept();
+    }
+
+    private _initViewModelIntercept() {
+        const FORCE_STRING_MARK = {
+            tl: {
+                size: 6,
+                color: '#409f11',
+            },
+        };
+
+        this.disposeWithMe(
+            this._sheetInterceptorService.intercept(
+                INTERCEPTOR_POINT.CELL_CONTENT,
+                {
+                    priority: 10,
+                    effect: InterceptorEffectEnum.Style,
+                    handler: (cell, pos, next) => {
+                        const skeleton = this._sheetSkeletonManagerService.getCurrentParam()?.skeleton;
+                        if (!skeleton) {
+                            return next(cell);
+                        }
+
+                        const cellRaw = pos.rawData;
+
+                        if (!cellRaw || cellRaw.v === null || cellRaw.v === undefined) {
+                            return next(cell);
+                        }
+
+                        /**
+                         * If the cell type is string or force string, and the value is a pure number or a string that can be converted to a number, show the force string mark.
+                         * '123 -> yes
+                         * '20% -> yes
+                         * '1,234.56 -> yes
+                         * 'abc -> no
+                         * '2025-09-17 -> no
+                         */
+                        if (
+                            (cell?.t === CellValueType.FORCE_STRING || cell?.t === CellValueType.STRING) &&
+                            (isRealNum(cellRaw.v) || (typeof cellRaw.v === 'string' && numfmt.parseNumber(cellRaw.v)))
+                        ) {
+                            // If the cell is in text format, follow the logic of number format
+                            const cellStyle = pos.workbook.getStyles().get(cellRaw.s);
+                            if (isTextFormat(cellStyle?.n?.pattern)) {
+                                return next(cell);
+                            }
+
+                            // If the user has disabled the force string mark, do not show it
+                            if (this._configService.getConfig<IUniverSheetsUIConfig>(SHEETS_UI_PLUGIN_CONFIG_KEY)?.disableForceStringMark) {
+                                return next(cell);
+                            }
+
+                            if (cell === cellRaw) {
+                                cell = { ...cellRaw };
+                            }
+
+                            cell.markers = { ...cell?.markers, ...FORCE_STRING_MARK };
+
+                            return next(cell);
+                        }
+
+                        return next(cell);
+                    },
+                }
+            )
+        );
+    }
+}

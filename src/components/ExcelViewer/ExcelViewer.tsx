@@ -7,9 +7,9 @@ import { UniverUIPlugin } from '@univerjs/ui';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
 
-import '@univerjs/design/lib/index.css';
-import '@univerjs/ui/lib/index.css';
-import '@univerjs/sheets-ui/lib/index.css';
+import '@univerjs/design/global.css';
+import '@univerjs/ui/global.css';
+import '@univerjs/sheets-ui/global.css';
 
 import './ExcelViewer.css';
 

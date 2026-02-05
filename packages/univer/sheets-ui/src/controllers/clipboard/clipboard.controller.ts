@@ -1,0 +1,856 @@
+/**
+ * Copyright 2023-present DreamNum Co., Ltd.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import type {
+    ICellData,
+    ICommandInfo,
+    IDocumentData,
+    IMutationInfo,
+    IObjectArrayPrimitiveType,
+    IObjectMatrixPrimitiveType,
+    IRange,
+    Workbook,
+    Worksheet,
+} from '@univerjs/core';
+import type {
+    IInsertColMutationParams,
+    IInsertRowMutationParams,
+    ISetRangeValuesMutationParams,
+    ISetWorksheetColWidthMutationParams,
+} from '@univerjs/sheets';
+import type {
+    ICellDataWithSpanInfo,
+    IClipboardPropertyItem,
+    ICopyPastePayload,
+    ISheetClipboardHook,
+    ISheetDiscreteRangeLocation,
+} from '../../services/clipboard/type';
+import type { IScrollStateWithSearchParam } from '../../services/scroll-manager.service';
+import type { IUniverSheetsUIConfig } from '../config.schema';
+import {
+    DEFAULT_WORKSHEET_COLUMN_WIDTH,
+    DEFAULT_WORKSHEET_COLUMN_WIDTH_KEY,
+    DOCS_NORMAL_EDITOR_UNIT_ID_KEY,
+    extractPureTextFromCell,
+    getNumfmtParseValueFilter,
+    handleStyleToString,
+    ICommandService,
+    IConfigService,
+    IContextService,
+    Inject,
+    Injector,
+    isFormulaString,
+    IUniverInstanceService,
+    LocaleService,
+    ObjectMatrix,
+    RxDisposable,
+    Tools,
+    UniverInstanceType,
+} from '@univerjs/core';
+import { MessageType } from '@univerjs/design';
+import { convertBodyToHtml, DocSelectionRenderService } from '@univerjs/docs-ui';
+import { IRenderManagerService, withCurrentTypeOfRenderer } from '@univerjs/engine-render';
+import {
+    AddWorksheetMergeCommand,
+    InsertColMutation,
+    InsertRowMutation,
+    MAX_CELL_PER_SHEET_KEY,
+    MoveColsMutation,
+    MoveRangeMutation,
+    MoveRowsMutation,
+    RemoveColMutation,
+    RemoveRowMutation,
+    SetRangeValuesMutation,
+    SetRangeValuesUndoMutationFactory,
+    SetWorksheetColWidthMutation,
+    SetWorksheetColWidthMutationFactory,
+} from '@univerjs/sheets';
+import { BuiltInUIPart, connectInjector, IMessageService, IUIPartsService } from '@univerjs/ui';
+import { Subject, takeUntil } from 'rxjs';
+import {
+    SheetCopyCommand,
+    SheetCutCommand,
+    SheetOptionalPasteCommand,
+    SheetPasteBesidesBorderCommand,
+    SheetPasteColWidthCommand,
+    SheetPasteCommand,
+    SheetPasteFormatCommand,
+    SheetPasteShortKeyCommand,
+    SheetPasteValueCommand,
+} from '../../commands/commands/clipboard.command';
+import { SetScrollOperation } from '../../commands/operations/scroll.operation';
+import { ISheetClipboardService, PREDEFINED_HOOK_NAME_COPY, PREDEFINED_HOOK_NAME_PASTE } from '../../services/clipboard/clipboard.service';
+import { SheetSkeletonManagerService } from '../../services/sheet-skeleton-manager.service';
+import { ClipboardPopupMenu } from '../../views/clipboard/ClipboardPopupMenu';
+import { SHEETS_UI_PLUGIN_CONFIG_KEY } from '../config.schema';
+import { whenSheetEditorFocused } from '../shortcuts/utils';
+import { RemovePasteMenuCommands } from './const';
+import {
+    generateBody,
+    getClearAndSetMergeMutations,
+    getClearCellStyleMutations,
+    getDefaultOnPasteCellMutations,
+    getSetCellStyleMutations,
+    getSetCellValueMutations,
+} from './utils';
+
+/**
+ * This controller add basic clipboard logic for basic features such as text color / BISU / row widths to the clipboard
+ * service. You can create a similar clipboard controller to add logic for your own features.
+ */
+
+const shouldRemoveShapeIds = [
+    InsertColMutation.id,
+    InsertRowMutation.id,
+    RemoveColMutation.id,
+    RemoveRowMutation.id,
+    MoveRangeMutation.id,
+    MoveRowsMutation.id,
+    MoveColsMutation.id,
+];
+
+export class SheetClipboardController extends RxDisposable {
+    private _refreshOptionalPaste$ = new Subject();
+    refreshOptionalPaste$ = this._refreshOptionalPaste$.asObservable();
+
+    constructor(
+        @Inject(Injector) private readonly _injector: Injector,
+        @IUniverInstanceService private readonly _instanceService: IUniverInstanceService,
+        @IRenderManagerService private readonly _renderManagerService: IRenderManagerService,
+        @ICommandService private readonly _commandService: ICommandService,
+        @IContextService private readonly _contextService: IContextService,
+        @IConfigService private readonly _configService: IConfigService,
+        @ISheetClipboardService private readonly _sheetClipboardService: ISheetClipboardService,
+        @IMessageService private readonly _messageService: IMessageService,
+        @Inject(LocaleService) private readonly _localService: LocaleService,
+        @IUIPartsService protected readonly _uiPartsService: IUIPartsService
+    ) {
+        super();
+        this._init();
+        this._initCommandListener();
+        this._initUIComponents();
+        this._pasteWithDoc();
+    }
+
+    refreshOptionalPaste() {
+        this._refreshOptionalPaste$.next(Math.random());
+    }
+
+    private _pasteWithDoc() {
+        const sheetPasteShortKeyFn = (docSelectionRenderService: DocSelectionRenderService) => {
+            docSelectionRenderService.onPaste$.pipe(takeUntil(this.dispose$)).subscribe((config) => {
+                if (!whenSheetEditorFocused(this._contextService)) {
+                    return;
+                }
+
+                // editor's value should not change and avoid triggering input event
+                config!.event.preventDefault();
+
+                const clipboardEvent = config!.event as ClipboardEvent;
+                const htmlContent = clipboardEvent.clipboardData?.getData('text/html');
+                const textContent = clipboardEvent.clipboardData?.getData('text/plain');
+                const files = this._resolveClipboardFiles(clipboardEvent.clipboardData);
+
+                this._commandService.executeCommand(SheetPasteShortKeyCommand.id, { htmlContent, textContent, files });
+            });
+
+            docSelectionRenderService?.onKeydown$.subscribe((event) => {
+                if ((event.event as KeyboardEvent).key === 'Escape') {
+                    this._sheetClipboardService.removeMarkSelection();
+                }
+            });
+        };
+
+        // docSelectionRenderService would init before clipboardService controller when creating a univer.
+        // But when creating a sheet unit again after the previous sheet unit has been disposed, clipboard controller would init before docSelectionRenderService.
+        // In this case, DocSelectionRenderService isn't ready when clipboardService controller init.
+        // So better listening to the created$ event of the renderManagerService to get the DocSelectionRenderService instance.
+        let docSelectionRenderService = this._renderManagerService.getRenderById(DOCS_NORMAL_EDITOR_UNIT_ID_KEY)?.with(DocSelectionRenderService);
+
+        if (docSelectionRenderService) {
+            sheetPasteShortKeyFn(docSelectionRenderService);
+        }
+        this._renderManagerService.created$.subscribe((renderer) => {
+            if (renderer.unitId === DOCS_NORMAL_EDITOR_UNIT_ID_KEY) {
+                docSelectionRenderService = this._renderManagerService.getRenderById(DOCS_NORMAL_EDITOR_UNIT_ID_KEY)?.with(DocSelectionRenderService);
+                if (docSelectionRenderService) {
+                    sheetPasteShortKeyFn(docSelectionRenderService);
+                }
+            }
+        });
+    }
+
+    private _resolveClipboardFiles(clipboardData: DataTransfer | null) {
+        if (!clipboardData) {
+            return;
+        }
+
+        const files = Array.from(clipboardData.items)
+            .map((item) => item.kind === 'file' ? item.getAsFile() : undefined)
+            .filter(Boolean) as File[];
+
+        return files.length > 0 ? files : undefined;
+    }
+
+    private _init(): void {
+        // register sheet clipboard commands
+        [SheetCopyCommand, SheetCutCommand, SheetPasteCommand].forEach((command) =>
+            this.disposeWithMe(this._commandService.registerMultipleCommand(command))
+        );
+
+        [
+            SheetPasteValueCommand,
+            SheetPasteFormatCommand,
+            SheetPasteColWidthCommand,
+            SheetPasteBesidesBorderCommand,
+            SheetPasteShortKeyCommand,
+            SheetOptionalPasteCommand,
+        ].forEach((command) => this.disposeWithMe(this._commandService.registerCommand(command)));
+
+        // register basic sheet clipboard hooks
+        this.disposeWithMe(this._sheetClipboardService.addClipboardHook(this._initCopyingHooks()));
+        this.disposeWithMe(this._sheetClipboardService.addClipboardHook(this._initPastingRowsHook()));
+        this.disposeWithMe(this._sheetClipboardService.addClipboardHook(this._initPastingColumnsHook()));
+        this.disposeWithMe(this._sheetClipboardService.addClipboardHook(this._initPastingHook()));
+        const disposables = this._initSpecialPasteHooks().map((hook) =>
+            this._sheetClipboardService.addClipboardHook(hook)
+        );
+        this.disposeWithMe({ dispose: () => disposables.forEach((d) => d.dispose()) });
+    }
+
+    // eslint-disable-next-line max-lines-per-function
+    private _initCopyingHooks(): ISheetClipboardHook {
+        const self = this;
+        let currentSheet: Worksheet | null = null;
+        return {
+            id: PREDEFINED_HOOK_NAME_COPY.DEFAULT_COPY,
+            isDefaultHook: true,
+            onBeforeCopy(unitId, subUnitId) {
+                currentSheet = self._getWorksheet(unitId, subUnitId);
+            },
+            onCopyCellContent(row: number, col: number): string {
+                const cell = currentSheet!.getCell(row, col);
+                if (cell?.p?.body?.paragraphs || cell?.p?.body?.textRuns) {
+                    return convertBodyToHtml(cell.p);
+                }
+                const content = cell ? extractPureTextFromCell(cell) : '';
+                return content;
+            },
+            onCopyCellStyle: (row: number, col: number, rowSpan?: number, colSpan?: number) => {
+                const properties: IClipboardPropertyItem = {};
+
+                if (rowSpan || colSpan) {
+                    properties.rowspan = `${rowSpan || 1}`;
+                    properties.colspan = `${colSpan || 1}`;
+                }
+
+                const mergedCellByRowCol = currentSheet!.getMergedCell(row, col);
+                /**
+                 * This is for generating the copied HTML, which requires all the styles applied to the cell, including conditional formatting, data validation, number format, etc.
+                 * So here we use `getComposedCellStyle` to get the final style of the cell.
+                 */
+                const textStyle = currentSheet!.getComposedCellStyle(row, col);
+
+                let style = '';
+
+                if (textStyle) {
+                    style = handleStyleToString(textStyle);
+                }
+
+                if (mergedCellByRowCol) {
+                    const endRow = mergedCellByRowCol.endRow;
+                    const endColumn = mergedCellByRowCol.endColumn;
+                    const lastRange = currentSheet!.getRange(endRow, endColumn);
+                    const lastTextStyle = lastRange.getTextStyle();
+                    if (lastTextStyle) {
+                        const lastStyle = handleStyleToString(lastTextStyle);
+                        if (style) {
+                            style += lastStyle ? `;${lastStyle}` : '';
+                        } else {
+                            style = lastStyle;
+                        }
+                    }
+                }
+
+                if (style) {
+                    properties.style = style;
+                }
+
+                return Object.keys(properties).length ? properties : null;
+            },
+            onCopyColumn(col: number) {
+                const sheet = currentSheet!;
+                const width = sheet.getColumnWidth(col);
+                return {
+                    width: `${width}`,
+                };
+            },
+            onCopyRow(row: number) {
+                const sheet = currentSheet!;
+                const height = sheet.getRowHeight(row);
+                return {
+                    style: `height: ${height}px;`,
+                };
+            },
+            onAfterCopy() {
+                currentSheet = null;
+            },
+            getFilteredOutRows(unitId: string, subUnitId: string, range: IRange) {
+                const worksheet = self._getWorksheet(unitId, subUnitId);
+                if (!worksheet) return [];
+
+                const { startRow, endRow } = range;
+                const res: number[] = [];
+
+                for (let r = startRow; r <= endRow; r++) {
+                    if (worksheet.getRowFiltered(r)) {
+                        res.push(r);
+                    }
+                }
+                return res;
+            },
+        };
+    }
+
+    private _initPastingHook(): ISheetClipboardHook {
+        const self = this;
+
+        return {
+            id: PREDEFINED_HOOK_NAME_PASTE.DEFAULT_PASTE,
+            isDefaultHook: true,
+            onBeforePaste({ range }) {
+                // examine if pasting would cause number of cells to exceed the upper limit
+                // this is not implemented yet
+                const maxConfig = self._configService.getConfig<number>(MAX_CELL_PER_SHEET_KEY);
+                const endRow = range.rows[range.rows.length - 1];
+                const endColumn = range.cols[range.cols.length - 1];
+                if (maxConfig && endRow * endColumn > maxConfig) {
+                    self._messageService.show({
+                        type: MessageType.Error,
+                        content: self._localService.t('clipboard.paste.exceedMaxCells'),
+                    }); // TODO: show error info
+                    return false;
+                }
+                return true;
+            },
+
+            onPastePlainText(pasteTo: ISheetDiscreteRangeLocation, text: string, payload: ICopyPastePayload) {
+                return self._onPastePlainText(pasteTo, text, payload);
+            },
+
+            onPasteCells(
+                pasteFrom: ISheetDiscreteRangeLocation,
+                pasteTo: ISheetDiscreteRangeLocation,
+                data: ObjectMatrix<ICellDataWithSpanInfo>,
+                payload: ICopyPastePayload
+            ) {
+                return self._onPasteCells(pasteFrom, pasteTo, data, payload);
+            },
+        };
+    }
+
+    private _initPastingRowsHook(): ISheetClipboardHook {
+        const self = this;
+
+        return {
+            id: PREDEFINED_HOOK_NAME_PASTE.DEFAULT_PASTE_ROWS,
+            isDefaultHook: true,
+
+            onPasteRows(pasteTo) {
+                const redos: IMutationInfo[] = [];
+                const undos: IMutationInfo[] = [];
+                const { range, unitId, subUnitId } = pasteTo;
+                const { rows, cols } = range;
+
+                if (!rows || !cols || rows.length === 0 || cols.length === 0) {
+                    return { redos, undos };
+                }
+
+                const worksheet = self._getWorksheet(unitId, subUnitId);
+                const worksheetLastRow = worksheet.getMaxRows() - 1;
+
+                const pasteRangeEndRow = rows[rows.length - 1];
+                const pasteRangeStartColumn = cols[0];
+                const pasteRangeEndColumn = cols[cols.length - 1];
+
+                // If the range is outside ot the worksheet's boundary, we should add rows
+                const addingRowsCount = pasteRangeEndRow - worksheetLastRow;
+                if (addingRowsCount > 0) {
+                    const insertRowMutationParams: IInsertRowMutationParams = {
+                        unitId,
+                        subUnitId,
+                        range: {
+                            startRow: worksheetLastRow + 1,
+                            endRow: pasteRangeEndRow,
+                            startColumn: pasteRangeStartColumn,
+                            endColumn: pasteRangeEndColumn,
+                        },
+                    };
+
+                    redos.push({
+                        id: InsertRowMutation.id,
+                        params: insertRowMutationParams,
+                    });
+                    undos.push({
+                        id: RemoveRowMutation.id,
+                        params: insertRowMutationParams,
+                    });
+                }
+
+                return {
+                    redos,
+                    undos,
+                };
+            },
+        };
+    }
+
+    private _initPastingColumnsHook(): ISheetClipboardHook {
+        const self = this;
+
+        return {
+            id: PREDEFINED_HOOK_NAME_PASTE.DEFAULT_PASTE_COLUMNS,
+            isDefaultHook: true,
+
+            onPasteColumns(pasteTo) {
+                const redos: IMutationInfo[] = [];
+                const undos: IMutationInfo[] = [];
+                const { range, unitId, subUnitId } = pasteTo;
+                const { rows, cols } = range;
+
+                if (!rows || !cols || rows.length === 0 || cols.length === 0) {
+                    return { redos, undos };
+                }
+
+                const worksheet = self._getWorksheet(unitId, subUnitId);
+                const worksheetLastColumn = worksheet.getMaxColumns() - 1;
+
+                const pasteRangeStartRow = rows[0];
+                const pasteRangeEndRow = rows[rows.length - 1];
+                const pasteRangeEndColumn = cols[cols.length - 1];
+
+                // If the range is outside ot the worksheet's boundary, we should add columns
+                const addingColsCount = pasteRangeEndColumn - worksheetLastColumn;
+                if (addingColsCount > 0) {
+                    const InsertColMutationParams: IInsertColMutationParams = {
+                        unitId,
+                        subUnitId,
+                        range: {
+                            startRow: pasteRangeStartRow,
+                            endRow: pasteRangeEndRow,
+                            startColumn: worksheetLastColumn + 1,
+                            endColumn: pasteRangeEndColumn,
+                        },
+                    };
+
+                    redos.push({
+                        id: InsertColMutation.id,
+                        params: InsertColMutationParams,
+                    });
+                    undos.push({
+                        id: RemoveColMutation.id,
+                        params: InsertColMutationParams,
+                    });
+                }
+
+                return {
+                    redos,
+                    undos,
+                };
+            },
+        };
+    }
+
+    private _generateDocumentDataModelSnapshot(snapshot: Partial<IDocumentData>) {
+        const currentSkeleton = withCurrentTypeOfRenderer(
+            UniverInstanceType.UNIVER_SHEET,
+            SheetSkeletonManagerService,
+            this._instanceService,
+            this._renderManagerService
+        )?.getCurrentParam();
+
+        if (currentSkeleton == null) {
+            return null;
+        }
+
+        const { skeleton } = currentSkeleton;
+        const documentModel = skeleton.getBlankCellDocumentModel()?.documentModel;
+        const p = documentModel?.getSnapshot();
+        const documentData = { ...p, ...snapshot };
+        documentModel?.reset(documentData);
+        return documentModel?.getSnapshot();
+    }
+
+    private _onPastePlainText(pasteTo: ISheetDiscreteRangeLocation, text: string, payload: ICopyPastePayload) {
+        const { range, unitId, subUnitId } = pasteTo;
+        let cellValue: IObjectMatrixPrimitiveType<ICellData>;
+        if (/\r|\n/.test(text) || Tools.isLegalUrl(text)) {
+            const body = generateBody(text);
+            const p = this._generateDocumentDataModelSnapshot({ body });
+            cellValue = {
+                [range.rows[0]]: {
+                    [range.cols[0]]: {
+                        p,
+                        v: null,
+                        f: null,
+                    },
+                },
+            };
+        } else {
+            if (isFormulaString(text)) {
+                cellValue = {
+                    [range.rows[0]]: {
+                        [range.cols[0]]: {
+                            f: text,
+                            v: null,
+                            p: null,
+                        },
+                    },
+                };
+            } else {
+                const pattern = getNumfmtParseValueFilter(text);
+                if (pattern?.z) {
+                    cellValue = {
+                        [range.rows[0]]: {
+                            [range.cols[0]]: {
+                                v: pattern.v,
+                                s: {
+                                    n: {
+                                        pattern: pattern.z,
+                                    },
+                                },
+                                f: null,
+                            },
+                        },
+                    };
+                } else {
+                    cellValue = {
+                        [range.rows[0]]: {
+                            [range.cols[0]]: {
+                                v: text,
+                                f: null,
+                            },
+                        },
+                    };
+                }
+            }
+        }
+
+        const setRangeValuesParams: ISetRangeValuesMutationParams = {
+            unitId,
+            subUnitId,
+            cellValue,
+        };
+
+        return {
+            redos: [
+                {
+                    id: SetRangeValuesMutation.id,
+                    params: setRangeValuesParams,
+                },
+            ],
+            undos: [
+                {
+                    id: SetRangeValuesMutation.id,
+                    params: SetRangeValuesUndoMutationFactory(this._injector, setRangeValuesParams),
+                },
+            ],
+        };
+    }
+
+    private _onPasteCells(
+        pasteFrom: ISheetDiscreteRangeLocation,
+        pasteTo: ISheetDiscreteRangeLocation,
+        data: ObjectMatrix<ICellDataWithSpanInfo>,
+        payload: ICopyPastePayload
+    ): {
+        redos: IMutationInfo[];
+        undos: IMutationInfo[];
+    } {
+        return this._injector.invoke((accessor) => {
+            return getDefaultOnPasteCellMutations(pasteFrom, pasteTo, data, payload, accessor);
+        });
+    }
+
+    // eslint-disable-next-line max-lines-per-function
+    private _initSpecialPasteHooks() {
+        const self = this;
+
+        const specialPasteValueHook: ISheetClipboardHook = {
+            id: PREDEFINED_HOOK_NAME_PASTE.SPECIAL_PASTE_VALUE,
+            specialPasteInfo: {
+                label: 'specialPaste.value',
+            },
+            onPasteCells: (pasteFrom, pasteTo, data) => {
+                return this._injector.invoke((accessor) => {
+                    return getSetCellValueMutations(pasteTo, pasteFrom, data, accessor);
+                });
+            },
+        };
+        const specialPasteFormatHook: ISheetClipboardHook = {
+            id: PREDEFINED_HOOK_NAME_PASTE.SPECIAL_PASTE_FORMAT,
+            specialPasteInfo: {
+                label: 'specialPaste.format',
+            },
+            onPasteCells: (pasteFrom, pasteTo, matrix) => {
+                const redoMutationsInfo: IMutationInfo[] = [];
+                const undoMutationsInfo: IMutationInfo[] = [];
+
+                // clear cell style
+                const { undos: styleUndos, redos: styleRedos } = this._injector.invoke((accessor) => {
+                    return getClearCellStyleMutations(pasteTo, matrix, accessor);
+                });
+                redoMutationsInfo.push(...styleRedos);
+                undoMutationsInfo.push(...styleUndos);
+
+                // clear and set merge
+                const { undos: mergeUndos, redos: mergeRedos } = this._injector.invoke((accessor) => {
+                    return getClearAndSetMergeMutations(
+                        pasteTo,
+                        matrix,
+                        accessor
+                    );
+                });
+                redoMutationsInfo.push(...mergeRedos);
+                undoMutationsInfo.push(...mergeUndos);
+
+                const { undos: setStyleUndos, redos: setStyleRedos } = this._injector.invoke((accessor) => {
+                    return getSetCellStyleMutations(
+                        pasteTo,
+                        pasteFrom,
+                        matrix,
+                        accessor
+                    );
+                });
+
+                redoMutationsInfo.push(...setStyleRedos);
+                undoMutationsInfo.push(...setStyleUndos);
+
+                return {
+                    undos: undoMutationsInfo,
+                    redos: redoMutationsInfo,
+                };
+            },
+        };
+
+        const specialPasteColWidthHook: ISheetClipboardHook = {
+            id: PREDEFINED_HOOK_NAME_PASTE.SPECIAL_PASTE_COL_WIDTH,
+            specialPasteInfo: {
+                label: 'specialPaste.colWidth',
+            },
+            onPasteCells() {
+                return {
+                    undos: [],
+                    redos: [],
+                };
+            },
+            onPasteColumns(pasteTo, colProperties, payload) {
+                const redos: IMutationInfo[] = [];
+                const undos: IMutationInfo[] = [];
+
+                if (payload.pasteType !== PREDEFINED_HOOK_NAME_PASTE.SPECIAL_PASTE_COL_WIDTH) {
+                    return { redos, undos };
+                }
+
+                const { range, unitId, subUnitId } = pasteTo;
+                const { rows, cols } = range;
+
+                if (!rows || !cols || rows.length === 0 || cols.length === 0) {
+                    return { redos, undos };
+                }
+
+                const worksheet = self._getWorksheet(unitId, subUnitId);
+                const defaultColumnWidth = self._configService.getConfig<number>(DEFAULT_WORKSHEET_COLUMN_WIDTH_KEY) ?? DEFAULT_WORKSHEET_COLUMN_WIDTH;
+
+                const pasteRangeStartRow = rows[0];
+                const pasteRangeEndRow = rows[rows.length - 1];
+                const pasteRangeStartColumn = cols[0];
+                const pasteRangeEndColumn = cols[cols.length - 1];
+
+                const colPropertiesLength = colProperties.length;
+                if (colPropertiesLength > 0) {
+                    const colWidth: IObjectArrayPrimitiveType<number> = {};
+
+                    for (let c = pasteRangeStartColumn; c <= pasteRangeEndColumn; c++) {
+                        const index = (c - pasteRangeStartColumn) % colPropertiesLength;
+                        const property = colProperties[index];
+                        if (property.width && Number(property.width) !== defaultColumnWidth) {
+                            colWidth[c] = Number(property.width);
+                        }
+                    }
+
+                    const setWorksheetColWidthMutationParams: ISetWorksheetColWidthMutationParams = {
+                        unitId,
+                        subUnitId,
+                        ranges: [
+                            {
+                                startRow: pasteRangeStartRow,
+                                endRow: pasteRangeEndRow,
+                                startColumn: pasteRangeStartColumn,
+                                endColumn: pasteRangeEndColumn,
+                            },
+                        ],
+                        colWidth,
+                    };
+
+                    redos.push({
+                        id: SetWorksheetColWidthMutation.id,
+                        params: setWorksheetColWidthMutationParams,
+                    });
+                    undos.unshift({
+                        id: SetWorksheetColWidthMutation.id,
+                        params: SetWorksheetColWidthMutationFactory(setWorksheetColWidthMutationParams, worksheet),
+                    });
+                }
+
+                return {
+                    redos,
+                    undos,
+                };
+            },
+        };
+
+        const specialPasteBesidesBorder: ISheetClipboardHook = {
+            id: PREDEFINED_HOOK_NAME_PASTE.SPECIAL_PASTE_BESIDES_BORDER,
+            specialPasteInfo: {
+                label: 'specialPaste.besidesBorder',
+            },
+            onPasteCells: (pasteFrom, pasteTo, matrix, payload) => {
+                const workbook = self._instanceService.getCurrentUnitForType<Workbook>(UniverInstanceType.UNIVER_SHEET)!;
+                const redoMutationsInfo: IMutationInfo[] = [];
+                const undoMutationsInfo: IMutationInfo[] = [];
+                const { range, unitId, subUnitId } = pasteTo;
+                const valueMatrix = new ObjectMatrix<ICellData>();
+
+                // TODO@Dushusir: undo selection
+                matrix.forValue((row, col, value) => {
+                    const style = value.s;
+                    if (typeof style === 'object') {
+                        const newValue = Tools.deepClone(value);
+                        if (newValue.s) {
+                            newValue.s = {
+                                ...style,
+                                bd: null,
+                            };
+                        }
+                        valueMatrix.setValue(range.rows[row], range.cols[col], newValue);
+                    }
+                });
+
+                // set cell value and style
+                const setValuesMutation: ISetRangeValuesMutationParams = {
+                    unitId,
+                    subUnitId,
+                    cellValue: valueMatrix.getData(),
+                };
+
+                redoMutationsInfo.push({
+                    id: SetRangeValuesMutation.id,
+                    params: setValuesMutation,
+                });
+
+                // undo
+                const undoSetValuesMutation: ISetRangeValuesMutationParams = this._injector.invoke(
+                    SetRangeValuesUndoMutationFactory,
+                    setValuesMutation
+                );
+
+                undoMutationsInfo.push({
+                    id: SetRangeValuesMutation.id,
+                    params: undoSetValuesMutation,
+                });
+
+                const { undos, redos } = this._injector.invoke((accessor) => {
+                    return getClearAndSetMergeMutations(pasteTo, matrix, accessor);
+                });
+                undoMutationsInfo.push(...undos);
+                redoMutationsInfo.push(...redos);
+
+                return {
+                    redos: redoMutationsInfo,
+                    undos: undoMutationsInfo,
+                };
+            },
+        };
+
+        return [specialPasteValueHook, specialPasteFormatHook, specialPasteColWidthHook, specialPasteBesidesBorder];
+    }
+
+    private _getWorksheet(unitId: string, subUnitId: string): Worksheet {
+        const worksheet = this._instanceService.getUniverSheetInstance(unitId)?.getSheetBySheetId(subUnitId);
+
+        if (!worksheet) {
+            throw new Error(
+                `[SheetClipboardController]: cannot find a worksheet with unitId ${unitId} and subUnitId ${subUnitId}.`
+            );
+        }
+
+        return worksheet;
+    }
+
+    private _initCommandListener() {
+        this.disposeWithMe(
+            this._commandService.onCommandExecuted((command: ICommandInfo) => {
+                if (command.id === AddWorksheetMergeCommand.id) {
+                    this._sheetClipboardService.removeMarkSelection();
+                } else if (shouldRemoveShapeIds.includes(command.id)) {
+                    this._sheetClipboardService.removeMarkSelection();
+                }
+            })
+        );
+
+        const sheetsUIConfig = this._configService.getConfig<IUniverSheetsUIConfig>(SHEETS_UI_PLUGIN_CONFIG_KEY);
+        if (sheetsUIConfig?.clipboardConfig?.hidePasteOptions) {
+            return;
+        }
+
+        this.disposeWithMe(
+            this._commandService.onCommandExecuted((command: ICommandInfo) => {
+                if (RemovePasteMenuCommands.includes(command.id)) {
+                    this._sheetClipboardService.disposePasteOptionsCache();
+                }
+            })
+        );
+
+        this.disposeWithMe(
+            this._commandService.onCommandExecuted((command: ICommandInfo) => {
+                if (command.id === SetScrollOperation.id) {
+                    if (!this._sheetClipboardService.getPasteMenuVisible()) {
+                        return;
+                    }
+                    const params = command.params as IScrollStateWithSearchParam;
+                    const scrollUnitId = params.unitId;
+                    const pasteOptionsCache = this._sheetClipboardService.getPasteOptionsCache();
+                    const menuUnitId = pasteOptionsCache?.target.unitId;
+                    if (scrollUnitId === menuUnitId) {
+                        this._refreshOptionalPaste$.next(Math.random());
+                    }
+                }
+            })
+        );
+    }
+
+    private _initUIComponents() {
+        const sheetsUIConfig = this._configService.getConfig<IUniverSheetsUIConfig>(SHEETS_UI_PLUGIN_CONFIG_KEY);
+        if (sheetsUIConfig?.clipboardConfig?.hidePasteOptions) {
+            return;
+        }
+
+        this.disposeWithMe(
+            this._uiPartsService.registerComponent(BuiltInUIPart.CONTENT, () => connectInjector(ClipboardPopupMenu, this._injector))
+        );
+    }
+}
