@@ -1,14 +1,18 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { IfcViewer } from './components/IFCViewer';
+import { IfcViewer } from './components/IfcViewer';
+import { CadViewer } from './components/CadViewer';
+import { PdfViewer } from './components/PdfViewer/PdfViewer';
 import './App.css';
 
-// IFC/BIM Viewer mode
+// Universal Document Viewer
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/ifc" replace />} />
         <Route path="/ifc" element={<IfcViewer />} />
+        <Route path="/cad" element={<CadViewer />} />
+        <Route path="/pdf" element={<PdfViewer />} />
       </Routes>
     </BrowserRouter>
   );
