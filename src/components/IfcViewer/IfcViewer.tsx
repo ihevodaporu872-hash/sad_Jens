@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, DragEvent } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as WebIFC from 'web-ifc';
@@ -8,8 +8,30 @@ export interface IfcViewerProps {
   className?: string;
 }
 
+// Helper function to get user-friendly error messages
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('wasm') || msg.includes('webassembly')) {
+      return 'Failed to load WebAssembly module. Please refresh the page or try a different browser.';
+    }
+    if (msg.includes('memory') || msg.includes('heap')) {
+      return 'Not enough memory to load this file. Try a smaller IFC file.';
+    }
+    if (msg.includes('invalid') || msg.includes('parse') || msg.includes('syntax')) {
+      return 'Invalid IFC file format. Please check that the file is a valid IFC file.';
+    }
+    if (msg.includes('network') || msg.includes('fetch')) {
+      return 'Network error. Please check your internet connection.';
+    }
+    return error.message;
+  }
+  return 'An unexpected error occurred. Please try again.';
+}
+
 export function IfcViewer({ className }: IfcViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -19,9 +41,12 @@ export function IfcViewer({ className }: IfcViewerProps) {
   const modelGroupRef = useRef<THREE.Group | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Loading...');
   const [error, setError] = useState<string | null>(null);
   const [viewerReady, setViewerReady] = useState(false);
   const [modelInfo, setModelInfo] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasModel, setHasModel] = useState(false);
 
   // Initialize Three.js scene and web-ifc
   useEffect(() => {
@@ -95,7 +120,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
         // Initialize web-ifc
         const ifcApi = new WebIFC.IfcAPI();
-        ifcApi.SetWasmPath('/packages/web-ifc/');
+        ifcApi.SetWasmPath('/wasm/');
         await ifcApi.Init();
         ifcApiRef.current = ifcApi;
 
@@ -255,8 +280,21 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
       // Load all geometry using StreamAllMeshes for better performance
       let meshCount = 0;
+      let totalMeshes = 0;
 
+      // First pass to count meshes (for progress)
+      ifcApi.StreamAllMeshes(modelID, () => {
+        totalMeshes++;
+      });
+
+      // Second pass to load geometry
+      let processedCount = 0;
       ifcApi.StreamAllMeshes(modelID, (mesh: WebIFC.FlatMesh) => {
+        processedCount++;
+        if (processedCount % 50 === 0 || processedCount === totalMeshes) {
+          setLoadingMessage(`Loading geometry... ${Math.round((processedCount / totalMeshes) * 100)}%`);
+        }
+
         const geometries = mesh.geometries;
         const size = geometries.size();
 
@@ -272,7 +310,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
         mesh.delete();
       });
 
-      console.log(`Loaded ${meshCount} meshes`);
+      console.log(`Loaded ${meshCount} meshes from ${totalMeshes} flat meshes`);
 
       // Center camera on model
       if (modelGroup.children.length > 0) {
@@ -294,33 +332,103 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
       // Close model to free memory (geometry is already extracted)
       ifcApi.CloseModel(modelID);
+
+      setHasModel(modelGroup.children.length > 0);
     },
     [createMeshFromGeometry]
   );
 
-  // Handle file upload
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  // Process file (used by both upload and drag&drop)
+  const processFile = useCallback(async (file: File) => {
+    // Validate file extension
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.ifc')) {
+      setError('Invalid file type. Please upload an IFC file (.ifc)');
+      return;
+    }
+
+    // Validate file size (max 500MB)
+    const maxSize = 500 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('File is too large. Maximum file size is 500MB.');
+      return;
+    }
 
     setIsLoading(true);
+    setLoadingMessage('Reading file...');
     setError(null);
     setModelInfo(null);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
       const data = new Uint8Array(arrayBuffer);
+
+      // Basic validation of IFC file header
+      const header = new TextDecoder().decode(data.slice(0, 100));
+      if (!header.includes('ISO-10303-21') && !header.includes('STEP')) {
+        throw new Error('Invalid IFC file: missing STEP header');
+      }
+
+      setLoadingMessage('Parsing IFC data...');
       await loadIfcModel(data);
       setIsLoading(false);
+      setLoadingMessage('Loading...');
     } catch (err) {
       console.error('Failed to load IFC file:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load file');
+      setError(getErrorMessage(err));
       setIsLoading(false);
+      setLoadingMessage('Loading...');
     }
+  }, [loadIfcModel]);
+
+  // Handle file upload
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    await processFile(file);
 
     // Reset input to allow re-uploading same file
     event.target.value = '';
   };
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!viewerReady || isLoading) return;
+    setIsDragging(true);
+  }, [viewerReady, isLoading]);
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    const relatedTarget = e.relatedTarget as Node | null;
+    if (!dropZoneRef.current?.contains(relatedTarget)) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!viewerReady || isLoading) return;
+
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    // Take only the first file
+    const file = files[0];
+    await processFile(file);
+  }, [viewerReady, isLoading, processFile]);
 
   // Reset view
   const handleResetView = () => {
@@ -353,7 +461,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
           <p>View BIM/IFC files with 3D navigation - Rotate, Zoom, Pan</p>
         </div>
         <div className="ifc-toolbar-actions">
-          <label className="file-upload-btn">
+          <label className={`file-upload-btn ${(!viewerReady || isLoading) ? 'disabled' : ''}`}>
             Upload IFC
             <input
               type="file"
@@ -365,7 +473,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
           <button
             className="reset-view-btn"
             onClick={handleResetView}
-            disabled={!viewerReady || isLoading}
+            disabled={!viewerReady || isLoading || !hasModel}
           >
             Reset View
           </button>
@@ -376,23 +484,66 @@ export function IfcViewer({ className }: IfcViewerProps) {
           {modelInfo}
         </div>
       )}
-      <div ref={containerRef} className="ifc-container">
-        {isLoading && (
-          <div className="ifc-overlay">
-            <div className="ifc-spinner" />
-            <p>Loading...</p>
-          </div>
-        )}
-        {error && (
-          <div className="ifc-overlay ifc-error">
-            <p>Error: {error}</p>
-          </div>
-        )}
-        {!viewerReady && !isLoading && !error && (
-          <div className="ifc-overlay">
-            <p>Initializing IFC viewer...</p>
-          </div>
-        )}
+      <div
+        ref={dropZoneRef}
+        className={`ifc-drop-zone ${isDragging ? 'dragging' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        <div ref={containerRef} className="ifc-container">
+          {isLoading && (
+            <div className="ifc-overlay">
+              <div className="ifc-spinner" />
+              <p>{loadingMessage}</p>
+            </div>
+          )}
+          {error && (
+            <div className="ifc-overlay ifc-error">
+              <div className="ifc-error-icon">!</div>
+              <p className="ifc-error-title">Error Loading File</p>
+              <p className="ifc-error-message">{error}</p>
+              <button className="ifc-error-retry" onClick={() => setError(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
+          {!viewerReady && !isLoading && !error && (
+            <div className="ifc-overlay">
+              <div className="ifc-spinner" />
+              <p>Initializing IFC viewer...</p>
+            </div>
+          )}
+          {viewerReady && !isLoading && !error && !hasModel && (
+            <div className="ifc-drop-hint">
+              <div className="ifc-drop-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+              </div>
+              <p className="ifc-drop-title">Drag & Drop IFC File Here</p>
+              <p className="ifc-drop-subtitle">or use the "Upload IFC" button above</p>
+              <p className="ifc-drop-formats">Supported: .ifc (IFC2x3, IFC4, IFC4x3)</p>
+            </div>
+          )}
+          {isDragging && (
+            <div className="ifc-drag-overlay">
+              <div className="ifc-drag-content">
+                <div className="ifc-drag-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+                <p>Drop IFC file to load</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="ifc-controls-hint">
         <span>Left click + drag: Rotate</span>

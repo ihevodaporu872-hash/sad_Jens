@@ -29,6 +29,8 @@
 .ifc-toolbar-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .file-upload-btn {
@@ -52,9 +54,11 @@
   display: none;
 }
 
-.file-upload-btn:has(input:disabled) {
+.file-upload-btn:has(input:disabled),
+.file-upload-btn.disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .reset-view-btn {
@@ -88,6 +92,21 @@
   border-bottom: 1px solid #374151;
 }
 
+/* Drop zone wrapper */
+.ifc-drop-zone {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.ifc-drop-zone.dragging {
+  outline: 3px dashed #646cff;
+  outline-offset: -3px;
+}
+
 .ifc-container {
   flex: 1;
   width: 100%;
@@ -118,6 +137,52 @@
 
 .ifc-overlay.ifc-error {
   color: #ff6b6b;
+  text-align: center;
+  padding: 2rem;
+}
+
+.ifc-error-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(255, 107, 107, 0.2);
+  color: #ff6b6b;
+  font-size: 28px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.ifc-error-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #ff6b6b;
+}
+
+.ifc-error-message {
+  font-size: 0.875rem;
+  color: #a0a0a0;
+  margin: 0 0 1rem 0;
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+.ifc-error-retry {
+  padding: 0.5rem 1rem;
+  background-color: #374151;
+  color: #e0e0e0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.2s;
+}
+
+.ifc-error-retry:hover {
+  background-color: #4b5563;
 }
 
 .ifc-spinner {
@@ -136,6 +201,92 @@
   }
 }
 
+/* Drop hint when no model is loaded */
+.ifc-drop-hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #6b7280;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ifc-drop-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 1rem;
+  color: #4b5563;
+}
+
+.ifc-drop-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ifc-drop-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #9ca3af;
+  margin: 0 0 0.5rem 0;
+}
+
+.ifc-drop-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0 0 1rem 0;
+}
+
+.ifc-drop-formats {
+  font-size: 0.75rem;
+  color: #4b5563;
+  margin: 0;
+}
+
+/* Drag overlay when dragging a file */
+.ifc-drag-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(100, 108, 255, 0.15);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  border: 3px dashed #646cff;
+  border-radius: 8px;
+  margin: 4px;
+}
+
+.ifc-drag-content {
+  text-align: center;
+  color: #646cff;
+}
+
+.ifc-drag-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+}
+
+.ifc-drag-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ifc-drag-content p {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
 .ifc-controls-hint {
   display: flex;
   justify-content: center;
@@ -150,6 +301,34 @@
 .ifc-controls-hint span {
   display: inline-flex;
   align-items: center;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .ifc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .ifc-toolbar-actions {
+    justify-content: center;
+  }
+
+  .ifc-controls-hint {
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: center;
+  }
+
+  .ifc-drop-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .ifc-drop-title {
+    font-size: 1rem;
+  }
 }
 
 /* Light mode support */
@@ -186,5 +365,42 @@
     background-color: #f9fafb;
     border-top-color: #e5e7eb;
     color: #9ca3af;
+  }
+
+  .ifc-drop-hint {
+    color: #9ca3af;
+  }
+
+  .ifc-drop-icon {
+    color: #6b7280;
+  }
+
+  .ifc-drop-title {
+    color: #374151;
+  }
+
+  .ifc-drop-subtitle {
+    color: #6b7280;
+  }
+
+  .ifc-drop-formats {
+    color: #9ca3af;
+  }
+
+  .ifc-error-icon {
+    background-color: rgba(220, 38, 38, 0.1);
+  }
+
+  .ifc-error-message {
+    color: #6b7280;
+  }
+
+  .ifc-error-retry {
+    background-color: #e5e7eb;
+    color: #374151;
+  }
+
+  .ifc-error-retry:hover {
+    background-color: #d1d5db;
   }
 }
