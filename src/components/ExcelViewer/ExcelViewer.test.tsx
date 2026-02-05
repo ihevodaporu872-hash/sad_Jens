@@ -40,9 +40,9 @@ vi.mock('@univerjs/engine-render', () => ({
 }))
 
 // Mock CSS imports
-vi.mock('@univerjs/design/global.css', () => ({}))
-vi.mock('@univerjs/ui/global.css', () => ({}))
-vi.mock('@univerjs/sheets-ui/global.css', () => ({}))
+vi.mock('@univerjs/design/lib/index.css', () => ({}))
+vi.mock('@univerjs/ui/lib/index.css', () => ({}))
+vi.mock('@univerjs/sheets-ui/lib/index.css', () => ({}))
 
 describe('ExcelViewer', () => {
   beforeEach(() => {
