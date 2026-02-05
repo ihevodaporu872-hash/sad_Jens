@@ -29,6 +29,31 @@
 .cad-toolbar-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
+}
+
+.cad-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background-color: #2a2a4a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a5a;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.cad-btn:hover:not(:disabled) {
+  background-color: #3a3a5a;
+  border-color: #4a4a6a;
+}
+
+.cad-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .file-upload-btn {
@@ -121,5 +146,16 @@
   .cad-overlay {
     background-color: rgba(245, 245, 245, 0.9);
     color: #666666;
+  }
+
+  .cad-btn {
+    background-color: #f0f0f0;
+    color: #333333;
+    border-color: #d0d0d0;
+  }
+
+  .cad-btn:hover:not(:disabled) {
+    background-color: #e0e0e0;
+    border-color: #c0c0c0;
   }
 }
