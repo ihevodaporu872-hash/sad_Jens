@@ -7,9 +7,11 @@ import { UniverUIPlugin } from '@univerjs/ui';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
 
-import '@univerjs/design/global.css';
-import '@univerjs/ui/global.css';
-import '@univerjs/sheets-ui/global.css';
+// CSS imports temporarily commented out to fix build issues
+// TODO: Fix CSS resolution with vite aliases
+// import '@univerjs/design/global.css';
+// import '@univerjs/ui/global.css';
+// import '@univerjs/sheets-ui/global.css';
 
 import './ExcelViewer.css';
 
