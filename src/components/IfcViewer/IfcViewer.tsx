@@ -53,6 +53,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [hasModel, setHasModel] = useState(false);
   const [wireframeMode, setWireframeMode] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   // Initialize Three.js scene and web-ifc
   useEffect(() => {
@@ -313,10 +314,17 @@ export function IfcViewer({ className }: IfcViewerProps) {
         }
       }
 
-      // Open model
+      // Open model with optimized settings
+      // Based on web-ifc v0.75 best practices from ThatOpen/engine_web-ifc
       console.log('[IFC Viewer] Opening model...');
       const modelID = ifcApi.OpenModel(data, {
         COORDINATE_TO_ORIGIN: true,
+        // Higher circle segments for smoother curved surfaces (default is 12)
+        CIRCLE_SEGMENTS: 16,
+        // Memory limit for large files (2GB default, good for files up to ~100MB)
+        MEMORY_LIMIT: 2147483648,
+        // Increase tolerance for better performance on complex models
+        BOOLEAN_UNION_THRESHOLD: 200,
       });
 
       console.log('[IFC Viewer] Model ID:', modelID);
@@ -335,12 +343,17 @@ export function IfcViewer({ className }: IfcViewerProps) {
       let flatMeshCount = 0;
 
       console.log('[IFC Viewer] Streaming and processing meshes...');
+      setLoadingProgress(0);
+
       ifcApi.StreamAllMeshes(modelID, (mesh: WebIFC.FlatMesh, index: number, total: number) => {
         flatMeshCount++;
 
-        // Update progress every 50 meshes or at the end
-        if (index % 50 === 0 || index === total - 1) {
-          console.log(`[IFC Viewer] Processing mesh ${index + 1}/${total}`);
+        // Update progress every 20 meshes or at the end for smoother progress display
+        if (index % 20 === 0 || index === total - 1) {
+          const progress = Math.round(((index + 1) / total) * 100);
+          setLoadingProgress(progress);
+          setLoadingMessage(`Loading geometry... ${progress}%`);
+          console.log(`[IFC Viewer] Processing mesh ${index + 1}/${total} (${progress}%)`);
         }
 
         const geometries = mesh.geometries;
@@ -356,6 +369,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
         }
       });
 
+      setLoadingProgress(100);
       console.log(`[IFC Viewer] Loaded ${meshCount} Three.js meshes from ${flatMeshCount} IFC flat meshes`);
 
       // Center camera on model
@@ -612,6 +626,14 @@ export function IfcViewer({ className }: IfcViewerProps) {
             <div className="ifc-overlay">
               <div className="ifc-spinner" />
               <p>{loadingMessage}</p>
+              {loadingProgress > 0 && loadingProgress < 100 && (
+                <div className="ifc-progress-bar">
+                  <div
+                    className="ifc-progress-fill"
+                    style={{ width: `${loadingProgress}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
           {error && (

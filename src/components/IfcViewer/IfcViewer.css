@@ -246,6 +246,23 @@
   }
 }
 
+/* Progress bar for loading large files */
+.ifc-progress-bar {
+  width: 200px;
+  height: 8px;
+  background-color: #374151;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.ifc-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #646cff 0%, #818cf8 100%);
+  border-radius: 4px;
+  transition: width 0.15s ease-out;
+}
+
 /* Drop hint when no model is loaded */
 .ifc-drop-hint {
   position: absolute;
