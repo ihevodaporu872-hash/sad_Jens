@@ -67,6 +67,8 @@ type CreateFieldResult = {
 };
 
 export type EmbedActions = {
+  loadDocument: (options: { dataUrl: string; name?: string; page?: number }) => Promise<ActionResult>;
+
   goTo: (options: { page: number }) => Promise<ActionResult>;
 
   selectTool: (toolType: ToolType | null) => Promise<ActionResult>;
@@ -163,6 +165,13 @@ export const useEmbed = (): { embedRef: React.RefObject<EmbedActions | null>; ac
     };
   };
 
+  const handleLoadDocument = React.useCallback(
+    createAction<[{ dataUrl: string; name?: string; page?: number }]>(async (ref, options) => {
+      return ref.loadDocument(options);
+    }),
+    [],
+  );
+
   const handleGoTo = React.useCallback(
     createAction<[{ page: number }]>(async (ref, options) => {
       return ref.goTo(options);
@@ -208,6 +217,7 @@ export const useEmbed = (): { embedRef: React.RefObject<EmbedActions | null>; ac
   return {
     embedRef,
     actions: {
+      loadDocument: handleLoadDocument,
       goTo: handleGoTo,
       selectTool: handleSelectTool,
       createField: handleCreateField,
