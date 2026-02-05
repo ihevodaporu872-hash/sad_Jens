@@ -109,6 +109,37 @@
   color: #ff6b6b;
 }
 
+.cad-error-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(255, 107, 107, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  color: #ff6b6b;
+}
+
+.cad-error-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+}
+
+.cad-error-message {
+  max-width: 400px;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0 0 1rem 0;
+}
+
+.cad-retry-btn {
+  margin-top: 0.5rem;
+}
+
 .cad-spinner {
   width: 40px;
   height: 40px;
@@ -123,6 +154,88 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Drop zone styles */
+.cad-drop-zone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.cad-drop-zone.cad-dragging {
+  background-color: rgba(100, 108, 255, 0.1);
+}
+
+/* Empty state */
+.cad-overlay.cad-empty-state {
+  background-color: transparent;
+  pointer-events: none;
+}
+
+.cad-drop-icon {
+  color: #4a4a6a;
+  margin-bottom: 1rem;
+}
+
+.cad-drop-icon-active {
+  color: #646cff;
+  animation: bounce 0.5s ease infinite alternate;
+}
+
+@keyframes bounce {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-10px);
+  }
+}
+
+.cad-drop-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: #e0e0e0;
+  margin: 0 0 0.5rem 0;
+}
+
+.cad-drop-subtitle {
+  font-size: 0.875rem;
+  color: #808080;
+  margin: 0 0 1rem 0;
+}
+
+.cad-drop-formats {
+  font-size: 0.75rem;
+  color: #606060;
+  margin: 0;
+}
+
+/* Drag overlay */
+.cad-overlay.cad-drag-overlay {
+  background-color: rgba(100, 108, 255, 0.15);
+  border: 2px dashed #646cff;
+  z-index: 20;
+}
+
+/* Controls hint */
+.cad-controls-hint {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 0.5rem 1rem;
+  background-color: #111827;
+  border-top: 1px solid #1f2937;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.cad-controls-hint span {
+  display: inline-flex;
+  align-items: center;
 }
 
 @media (prefers-color-scheme: light) {
@@ -148,6 +261,34 @@
     color: #666666;
   }
 
+  .cad-overlay.cad-empty-state {
+    background-color: transparent;
+  }
+
+  .cad-drop-icon {
+    color: #c0c0c0;
+  }
+
+  .cad-drop-title {
+    color: #333333;
+  }
+
+  .cad-drop-subtitle {
+    color: #666666;
+  }
+
+  .cad-drop-formats {
+    color: #999999;
+  }
+
+  .cad-drop-zone.cad-dragging {
+    background-color: rgba(100, 108, 255, 0.05);
+  }
+
+  .cad-overlay.cad-drag-overlay {
+    background-color: rgba(100, 108, 255, 0.1);
+  }
+
   .cad-btn {
     background-color: #f0f0f0;
     color: #333333;
@@ -157,5 +298,16 @@
   .cad-btn:hover:not(:disabled) {
     background-color: #e0e0e0;
     border-color: #c0c0c0;
+  }
+
+  .cad-controls-hint {
+    background-color: #f9fafb;
+    border-top-color: #e5e7eb;
+    color: #9ca3af;
+  }
+
+  .cad-error-icon {
+    background-color: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
   }
 }
