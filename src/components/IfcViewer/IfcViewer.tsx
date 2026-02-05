@@ -56,8 +56,13 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
   // Initialize Three.js scene and web-ifc
   useEffect(() => {
+    // Prevent double initialization in React Strict Mode
+    let isInitialized = false;
+
     const initViewer = async () => {
-      if (!containerRef.current) return;
+      if (!containerRef.current || isInitialized) return;
+      if (rendererRef.current) return; // Already initialized
+      isInitialized = true;
 
       try {
         setIsLoading(true);
@@ -113,10 +118,12 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
         // Grid helper
         const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x333333);
+        gridHelper.name = 'gridHelper';
         scene.add(gridHelper);
 
         // Axes helper
         const axesHelper = new THREE.AxesHelper(10);
+        axesHelper.name = 'axesHelper';
         scene.add(axesHelper);
 
         // Model group
@@ -126,8 +133,11 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
         // Initialize web-ifc
         const ifcApi = new WebIFC.IfcAPI();
-        ifcApi.SetWasmPath('/wasm/');
+        // Use absolute path for WASM files
+        ifcApi.SetWasmPath('/wasm/', true);
+        console.log('[IFC Viewer] Initializing web-ifc API...');
         await ifcApi.Init();
+        console.log('[IFC Viewer] web-ifc API initialized successfully');
         ifcApiRef.current = ifcApi;
 
         // Animation loop
@@ -186,20 +196,21 @@ export function IfcViewer({ className }: IfcViewerProps) {
       modelID: number,
       placedGeometry: WebIFC.PlacedGeometry
     ): THREE.Mesh | null => {
-      const geometry = ifcApi.GetGeometry(modelID, placedGeometry.geometryExpressID);
-      const vertexData = ifcApi.GetVertexArray(
-        geometry.GetVertexData(),
-        geometry.GetVertexDataSize()
-      );
-      const indexData = ifcApi.GetIndexArray(
-        geometry.GetIndexData(),
-        geometry.GetIndexDataSize()
-      );
+      try {
+        const geometry = ifcApi.GetGeometry(modelID, placedGeometry.geometryExpressID);
+        const vertexData = ifcApi.GetVertexArray(
+          geometry.GetVertexData(),
+          geometry.GetVertexDataSize()
+        );
+        const indexData = ifcApi.GetIndexArray(
+          geometry.GetIndexData(),
+          geometry.GetIndexDataSize()
+        );
 
-      if (vertexData.length === 0 || indexData.length === 0) {
-        if (typeof geometry.delete === 'function') geometry.delete();
-        return null;
-      }
+        if (vertexData.length === 0 || indexData.length === 0) {
+          if (typeof geometry.delete === 'function') geometry.delete();
+          return null;
+        }
 
       // Create Three.js geometry
       const bufferGeometry = new THREE.BufferGeometry();
@@ -229,12 +240,18 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
       // Create material with IFC color
       const color = placedGeometry.color;
+      // If color is pure white, use a light gray for better visibility
+      const r = color.x === 1 && color.y === 1 && color.z === 1 ? 0.85 : color.x;
+      const g = color.x === 1 && color.y === 1 && color.z === 1 ? 0.85 : color.y;
+      const b = color.x === 1 && color.y === 1 && color.z === 1 ? 0.9 : color.z;
+
       const material = new THREE.MeshPhongMaterial({
-        color: new THREE.Color(color.x, color.y, color.z),
+        color: new THREE.Color(r, g, b),
         opacity: color.w,
         transparent: color.w < 1,
         side: THREE.DoubleSide,
         flatShading: false,
+        shininess: 30,
       });
 
       const mesh = new THREE.Mesh(bufferGeometry, material);
@@ -243,6 +260,10 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
       if (typeof geometry.delete === 'function') geometry.delete();
       return mesh;
+      } catch (err) {
+        console.error('[IFC Viewer] Error creating mesh from geometry:', err);
+        return null;
+      }
     },
     []
   );
@@ -293,9 +314,12 @@ export function IfcViewer({ className }: IfcViewerProps) {
       }
 
       // Open model
+      console.log('[IFC Viewer] Opening model...');
       const modelID = ifcApi.OpenModel(data, {
         COORDINATE_TO_ORIGIN: true,
       });
+
+      console.log('[IFC Viewer] Model ID:', modelID);
 
       if (modelID === -1) {
         throw new Error('Failed to open IFC file');
@@ -303,59 +327,94 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
       // Get model schema info
       const schema = ifcApi.GetModelSchema(modelID);
+      console.log('[IFC Viewer] Model schema:', schema);
 
-      // Load all geometry using StreamAllMeshes for better performance
+      // Load all geometry using StreamAllMeshes
+      // IMPORTANT: Geometry is only available during the callback - must process immediately!
       let meshCount = 0;
-      let totalMeshes = 0;
+      let flatMeshCount = 0;
 
-      // First pass to count meshes (for progress)
-      ifcApi.StreamAllMeshes(modelID, () => {
-        totalMeshes++;
-      });
+      console.log('[IFC Viewer] Streaming and processing meshes...');
+      ifcApi.StreamAllMeshes(modelID, (mesh: WebIFC.FlatMesh, index: number, total: number) => {
+        flatMeshCount++;
 
-      // Second pass to load geometry
-      let processedCount = 0;
-      ifcApi.StreamAllMeshes(modelID, (mesh: WebIFC.FlatMesh) => {
-        processedCount++;
-        if (processedCount % 50 === 0 || processedCount === totalMeshes) {
-          setLoadingMessage(`Loading geometry... ${Math.round((processedCount / totalMeshes) * 100)}%`);
+        // Update progress every 50 meshes or at the end
+        if (index % 50 === 0 || index === total - 1) {
+          console.log(`[IFC Viewer] Processing mesh ${index + 1}/${total}`);
         }
 
         const geometries = mesh.geometries;
         const size = geometries.size();
 
-        for (let i = 0; i < size; i++) {
-          const placedGeometry = geometries.get(i);
+        for (let j = 0; j < size; j++) {
+          const placedGeometry = geometries.get(j);
           const threeMesh = createMeshFromGeometry(ifcApi, modelID, placedGeometry);
           if (threeMesh) {
             modelGroup.add(threeMesh);
             meshCount++;
           }
         }
-
-        if (typeof mesh.delete === 'function') {
-          mesh.delete();
-        }
       });
 
-      console.log(`Loaded ${meshCount} meshes from ${totalMeshes} flat meshes`);
+      console.log(`[IFC Viewer] Loaded ${meshCount} Three.js meshes from ${flatMeshCount} IFC flat meshes`);
 
       // Center camera on model
+      console.log('[IFC Viewer] Model group children count:', modelGroup.children.length);
       if (modelGroup.children.length > 0) {
         const box = new THREE.Box3().setFromObject(modelGroup);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
 
-        if (cameraRef.current && controlsRef.current) {
+
+        if (cameraRef.current && controlsRef.current && sceneRef.current) {
+          // Remove old grid, axes and box helper by name
+          const oldGrid = sceneRef.current.getObjectByName('gridHelper');
+          const oldAxes = sceneRef.current.getObjectByName('axesHelper');
+          const oldBox = sceneRef.current.getObjectByName('boxHelper');
+          if (oldGrid) sceneRef.current.remove(oldGrid);
+          if (oldAxes) sceneRef.current.remove(oldAxes);
+          if (oldBox) sceneRef.current.remove(oldBox);
+
+          // Update grid to match model size
+          const gridSize = Math.max(maxDim * 4, 10);
+          const gridDivisions = Math.min(100, Math.max(10, Math.floor(gridSize)));
+          const newGrid = new THREE.GridHelper(gridSize, gridDivisions, 0x555555, 0x404040);
+          newGrid.name = 'gridHelper';
+          newGrid.position.set(center.x, box.min.y, center.z);
+          sceneRef.current.add(newGrid);
+
+          // Update axes helper
+          const axesSize = Math.max(maxDim * 0.3, 1);
+          const newAxes = new THREE.AxesHelper(axesSize);
+          newAxes.name = 'axesHelper';
+          newAxes.position.set(center.x, box.min.y, center.z);
+          sceneRef.current.add(newAxes);
+
+
+          // Position camera at a good viewing distance
+          const distance = maxDim * 2.5;
           cameraRef.current.position.set(
-            center.x + maxDim,
-            center.y + maxDim,
-            center.z + maxDim
+            center.x + distance * 0.7,
+            center.y + distance * 0.7,
+            center.z + distance * 0.7
           );
+          cameraRef.current.lookAt(center);
           controlsRef.current.target.copy(center);
+
+          // Update camera near/far planes based on model size
+          cameraRef.current.near = Math.max(0.001, maxDim * 0.0001);
+          cameraRef.current.far = Math.max(1000, maxDim * 200);
+          cameraRef.current.updateProjectionMatrix();
+
+          // Update controls distance limits
+          controlsRef.current.minDistance = maxDim * 0.05;
+          controlsRef.current.maxDistance = maxDim * 20;
           controlsRef.current.update();
+
         }
+      } else {
+        console.warn('[IFC Viewer] No meshes were added to the model group');
       }
 
       // Close model to free memory (geometry is already extracted)
