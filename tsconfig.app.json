@@ -30,7 +30,19 @@
       "@univerjs/drawing": ["packages/univer/drawing/src"],
       "@univerjs/drawing/*": ["packages/univer/drawing/src/*"],
       "@univerjs/themes": ["packages/univer/themes/src"],
-      "@univerjs/themes/*": ["packages/univer/themes/src/*"]
+      "@univerjs/themes/*": ["packages/univer/themes/src/*"],
+      "@simplepdf": ["packages/simplepdf/src"],
+      "@simplepdf/*": ["packages/simplepdf/src/*"],
+      "@simplepdf/react-embed-pdf": ["packages/simplepdf/src"],
+      "@simplepdf/react-embed-pdf/*": ["packages/simplepdf/src/*"],
+      "@cad-viewer/core": ["packages/cad-viewer/core/src"],
+      "@cad-viewer/core/*": ["packages/cad-viewer/core/src/*"],
+      "@cad-viewer/svg-renderer": ["packages/cad-viewer/svg-renderer/src"],
+      "@cad-viewer/svg-renderer/*": ["packages/cad-viewer/svg-renderer/src/*"],
+      "@cad-viewer/three-renderer": ["packages/cad-viewer/three-renderer/src"],
+      "@cad-viewer/three-renderer/*": ["packages/cad-viewer/three-renderer/src/*"],
+      "web-ifc": ["packages/web-ifc"],
+      "web-ifc/*": ["packages/web-ifc/*"]
     },
 
     /* Bundler mode */
@@ -52,7 +64,7 @@
     "noUncheckedSideEffectImports": false,
     "noImplicitAny": false
   },
-  "include": ["src", "packages/univer/*/src"],
+  "include": ["src", "packages/univer/*/src", "packages/simplepdf/src", "packages/cad-viewer/*/src", "packages/web-ifc"],
   "exclude": [
     "packages/univer/*/__tests__",
     "packages/univer/*/vitest.config.ts",
