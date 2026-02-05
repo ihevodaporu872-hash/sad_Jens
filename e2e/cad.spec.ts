@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create a minimal DXF file for testing
 const createTestDxf = (): Buffer => {
@@ -37,7 +42,10 @@ EOF
 test.describe('CAD Viewer', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/cad');
-    await page.waitForLoadState('networkidle');
+    // Wait for DOM to be ready instead of networkidle (which may never settle due to WebSocket/polling)
+    await page.waitForLoadState('domcontentloaded');
+    // Wait for the main viewer container to appear
+    await page.waitForSelector('.cad-viewer', { timeout: 30000 });
   });
 
   test('should load CAD page with viewer container', async ({ page }) => {

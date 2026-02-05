@@ -197,7 +197,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
       );
 
       if (vertexData.length === 0 || indexData.length === 0) {
-        geometry.delete();
+        if (typeof geometry.delete === 'function') geometry.delete();
         return null;
       }
 
@@ -241,7 +241,7 @@ export function IfcViewer({ className }: IfcViewerProps) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
 
-      geometry.delete();
+      if (typeof geometry.delete === 'function') geometry.delete();
       return mesh;
     },
     []
@@ -333,7 +333,9 @@ export function IfcViewer({ className }: IfcViewerProps) {
           }
         }
 
-        mesh.delete();
+        if (typeof mesh.delete === 'function') {
+          mesh.delete();
+        }
       });
 
       console.log(`Loaded ${meshCount} meshes from ${totalMeshes} flat meshes`);
