@@ -26,10 +26,50 @@
   color: #a0a0a0;
 }
 
+.cad-file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  background-color: rgba(100, 108, 255, 0.1);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.cad-file-name {
+  color: #e0e0e0;
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cad-file-size {
+  color: #888888;
+  padding-left: 0.75rem;
+  border-left: 1px solid #3a3a5a;
+}
+
 .cad-toolbar-actions {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.cad-btn-group {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.cad-btn-separator {
+  width: 1px;
+  height: 24px;
+  background-color: #3a3a5a;
+  margin: 0 0.25rem;
 }
 
 .cad-btn {
@@ -250,6 +290,23 @@
 
   .cad-toolbar-header p {
     color: #666666;
+  }
+
+  .cad-file-info {
+    background-color: rgba(100, 108, 255, 0.08);
+  }
+
+  .cad-file-name {
+    color: #333333;
+  }
+
+  .cad-file-size {
+    color: #666666;
+    border-left-color: #d0d0d0;
+  }
+
+  .cad-btn-separator {
+    background-color: #d0d0d0;
   }
 
   .cad-container {

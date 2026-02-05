@@ -70,6 +70,7 @@ export function CadViewer({
   const [documentTitle, setDocumentTitle] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hasDocument, setHasDocument] = useState(false);
+  const [fileInfo, setFileInfo] = useState<{ name: string; size: number } | null>(null);
 
   // Handle document activated event
   const handleDocumentActivated = useCallback((args: AcDbDocumentEventArgs) => {
@@ -169,14 +170,18 @@ export function CadViewer({
       const arrayBuffer = await file.arrayBuffer();
       const success = await docManagerRef.current.openDocument(file.name, arrayBuffer, {});
 
-      if (!success) {
+      if (success) {
+        setFileInfo({ name: file.name, size: file.size });
+      } else {
         setErrorWithCallback('Failed to open the CAD file. The file may be corrupted or in an unsupported format.');
+        setFileInfo(null);
       }
       setIsLoading(false);
     } catch (err) {
       console.error('Failed to load file:', err);
       const errorMessage = getErrorMessage(err);
       setErrorWithCallback(errorMessage);
+      setFileInfo(null);
       setIsLoading(false);
     }
   }, [setErrorWithCallback]);
@@ -229,7 +234,7 @@ export function CadViewer({
     await processFile(file);
   }, [viewerReady, isLoading, processFile]);
 
-  // Zoom controls
+  // Navigation and view controls
   const handleZoomIn = useCallback(() => {
     docManagerRef.current?.sendStringToExecute('zoom');
   }, []);
@@ -242,32 +247,84 @@ export function CadViewer({
     docManagerRef.current?.regen();
   }, []);
 
+  const handlePan = useCallback(() => {
+    docManagerRef.current?.sendStringToExecute('pan');
+  }, []);
+
+  const handleZoomWindow = useCallback(() => {
+    docManagerRef.current?.sendStringToExecute('zoom w');
+  }, []);
+
+  const handleZoomPrevious = useCallback(() => {
+    docManagerRef.current?.sendStringToExecute('zoom p');
+  }, []);
+
+  /** Format file size for display */
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
   return (
     <div className={`cad-viewer ${className || ''}`}>
       <div className="cad-toolbar">
         <div className="cad-toolbar-header">
           <h2>{documentTitle || 'CAD Viewer'}</h2>
           <p>Powered by mlightcad - View DWG/DXF files with zoom and pan</p>
+          {fileInfo && (
+            <div className="cad-file-info">
+              <span className="cad-file-name" title={fileInfo.name}>{fileInfo.name}</span>
+              <span className="cad-file-size">{formatFileSize(fileInfo.size)}</span>
+            </div>
+          )}
         </div>
         <div className="cad-toolbar-actions">
           {viewerReady && hasDocument && (
             <>
-              <button
-                className="cad-btn"
-                onClick={handleZoomIn}
-                disabled={isLoading}
-                title="Zoom"
-              >
-                Zoom
-              </button>
-              <button
-                className="cad-btn"
-                onClick={handleZoomFit}
-                disabled={isLoading}
-                title="Fit to view"
-              >
-                Fit
-              </button>
+              <div className="cad-btn-group">
+                <button
+                  className="cad-btn"
+                  onClick={handlePan}
+                  disabled={isLoading}
+                  title="Pan (click and drag to move around)"
+                >
+                  Pan
+                </button>
+                <button
+                  className="cad-btn"
+                  onClick={handleZoomIn}
+                  disabled={isLoading}
+                  title="Interactive zoom"
+                >
+                  Zoom
+                </button>
+                <button
+                  className="cad-btn"
+                  onClick={handleZoomWindow}
+                  disabled={isLoading}
+                  title="Zoom to window selection"
+                >
+                  Window
+                </button>
+                <button
+                  className="cad-btn"
+                  onClick={handleZoomFit}
+                  disabled={isLoading}
+                  title="Fit drawing to view"
+                >
+                  Fit
+                </button>
+                <button
+                  className="cad-btn"
+                  onClick={handleZoomPrevious}
+                  disabled={isLoading}
+                  title="Previous zoom level"
+                >
+                  Previous
+                </button>
+              </div>
+              <div className="cad-btn-separator" />
               <button
                 className="cad-btn"
                 onClick={handleRegen}
