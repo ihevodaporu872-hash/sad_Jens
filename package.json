@@ -45,7 +45,8 @@
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
     "rxjs": "^7.8.2",
-    "three": "^0.182.0"
+    "three": "^0.182.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@babel/plugin-proposal-class-properties": "^7.18.6",

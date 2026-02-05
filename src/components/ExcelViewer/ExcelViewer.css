@@ -11,16 +11,110 @@
   border-bottom: 1px solid #0f3460;
 }
 
+.toolbar-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
 .excel-toolbar h2 {
-  margin: 0 0 0.25rem 0;
+  margin: 0;
   font-size: 1.25rem;
   color: #ffffff;
 }
 
+.file-name {
+  font-size: 0.875rem;
+  color: #4CAF50;
+  background-color: rgba(76, 175, 80, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
 .excel-toolbar p {
-  margin: 0;
+  margin: 0 0 1rem 0;
   font-size: 0.875rem;
   color: #a0a0a0;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-button,
+.load-test-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #4CAF50;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.upload-button:hover,
+.load-test-button:hover {
+  background-color: #45a049;
+}
+
+.load-test-button {
+  background-color: #2196F3;
+}
+
+.load-test-button:hover {
+  background-color: #1976D2;
+}
+
+.load-test-button:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.loading-indicator {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #0f3460;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #4CAF50;
+  transition: width 0.3s ease;
+}
+
+.loading-message {
+  font-size: 0.75rem;
+  color: #a0a0a0;
+}
+
+.error-message {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: rgba(244, 67, 54, 0.1);
+  border-left: 3px solid #F44336;
+  color: #F44336;
+  font-size: 0.875rem;
 }
 
 .excel-container {
@@ -41,6 +135,14 @@
   }
 
   .excel-toolbar p {
+    color: #666666;
+  }
+
+  .progress-bar {
+    background-color: #e0e0e0;
+  }
+
+  .loading-message {
     color: #666666;
   }
 }
