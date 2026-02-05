@@ -44,9 +44,15 @@ export function IfcViewer({ className }: IfcViewerProps) {
   const [loadingMessage, setLoadingMessage] = useState('Loading...');
   const [error, setError] = useState<string | null>(null);
   const [viewerReady, setViewerReady] = useState(false);
-  const [modelInfo, setModelInfo] = useState<string | null>(null);
+  const [modelInfo, setModelInfo] = useState<{
+    schema: string;
+    meshCount: number;
+    fileSize: number;
+    fileName: string;
+  } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hasModel, setHasModel] = useState(false);
+  const [wireframeMode, setWireframeMode] = useState(false);
 
   // Initialize Three.js scene and web-ifc
   useEffect(() => {
@@ -241,9 +247,30 @@ export function IfcViewer({ className }: IfcViewerProps) {
     []
   );
 
+  // Toggle wireframe mode
+  const toggleWireframe = useCallback(() => {
+    const modelGroup = modelGroupRef.current;
+    if (!modelGroup) return;
+
+    const newWireframeMode = !wireframeMode;
+    setWireframeMode(newWireframeMode);
+
+    modelGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => {
+            m.wireframe = newWireframeMode;
+          });
+        } else {
+          child.material.wireframe = newWireframeMode;
+        }
+      }
+    });
+  }, [wireframeMode]);
+
   // Load IFC model
   const loadIfcModel = useCallback(
-    async (data: Uint8Array) => {
+    async (data: Uint8Array, fileName: string, fileSize: number) => {
       const ifcApi = ifcApiRef.current;
       const modelGroup = modelGroupRef.current;
 
@@ -276,7 +303,6 @@ export function IfcViewer({ className }: IfcViewerProps) {
 
       // Get model schema info
       const schema = ifcApi.GetModelSchema(modelID);
-      setModelInfo(`IFC Schema: ${schema}`);
 
       // Load all geometry using StreamAllMeshes for better performance
       let meshCount = 0;
@@ -334,6 +360,14 @@ export function IfcViewer({ className }: IfcViewerProps) {
       ifcApi.CloseModel(modelID);
 
       setHasModel(modelGroup.children.length > 0);
+
+      // Set model info with all details
+      setModelInfo({
+        schema,
+        meshCount,
+        fileSize,
+        fileName,
+      });
     },
     [createMeshFromGeometry]
   );
@@ -370,7 +404,8 @@ export function IfcViewer({ className }: IfcViewerProps) {
       }
 
       setLoadingMessage('Parsing IFC data...');
-      await loadIfcModel(data);
+      await loadIfcModel(data, file.name, file.size);
+      setWireframeMode(false);
       setIsLoading(false);
       setLoadingMessage('Loading...');
     } catch (err) {
@@ -477,11 +512,30 @@ export function IfcViewer({ className }: IfcViewerProps) {
           >
             Reset View
           </button>
+          <button
+            className={`wireframe-btn ${wireframeMode ? 'active' : ''}`}
+            onClick={toggleWireframe}
+            disabled={!viewerReady || isLoading || !hasModel}
+            title="Toggle wireframe mode"
+          >
+            Wireframe
+          </button>
         </div>
       </div>
       {modelInfo && (
         <div className="ifc-model-info">
-          {modelInfo}
+          <span className="ifc-model-info-item">
+            <strong>File:</strong> {modelInfo.fileName}
+          </span>
+          <span className="ifc-model-info-item">
+            <strong>Schema:</strong> {modelInfo.schema}
+          </span>
+          <span className="ifc-model-info-item">
+            <strong>Elements:</strong> {modelInfo.meshCount.toLocaleString()}
+          </span>
+          <span className="ifc-model-info-item">
+            <strong>Size:</strong> {(modelInfo.fileSize / 1024 / 1024).toFixed(2)} MB
+          </span>
         </div>
       )}
       <div

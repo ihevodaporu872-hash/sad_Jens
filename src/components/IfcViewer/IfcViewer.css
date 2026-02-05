@@ -84,12 +84,57 @@
   cursor: not-allowed;
 }
 
+.wireframe-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: #374151;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.wireframe-btn:hover {
+  background-color: #4b5563;
+}
+
+.wireframe-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wireframe-btn.active {
+  background-color: #646cff;
+  box-shadow: 0 0 0 2px rgba(100, 108, 255, 0.4);
+}
+
+.wireframe-btn.active:hover {
+  background-color: #535bf2;
+}
+
 .ifc-model-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
   padding: 0.5rem 1rem;
   background-color: #1f2937;
   color: #9ca3af;
   font-size: 0.75rem;
   border-bottom: 1px solid #374151;
+}
+
+.ifc-model-info-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.ifc-model-info-item strong {
+  color: #d1d5db;
 }
 
 /* Drop zone wrapper */
@@ -402,5 +447,23 @@
 
   .ifc-error-retry:hover {
     background-color: #d1d5db;
+  }
+
+  .wireframe-btn {
+    background-color: #e5e7eb;
+    color: #374151;
+  }
+
+  .wireframe-btn:hover {
+    background-color: #d1d5db;
+  }
+
+  .wireframe-btn.active {
+    background-color: #646cff;
+    color: white;
+  }
+
+  .ifc-model-info-item strong {
+    color: #374151;
   }
 }
