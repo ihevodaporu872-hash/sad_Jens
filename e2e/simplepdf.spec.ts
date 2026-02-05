@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create a simple test PDF for upload
 const createTestPdf = (): Buffer => {
@@ -42,7 +46,8 @@ startxref
 test.describe('PDF Viewer (SimplePDF Integration)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/pdf');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('.pdf-viewer', { timeout: 30000 });
   });
 
   test('should load PDF page with viewer container', async ({ page }) => {
