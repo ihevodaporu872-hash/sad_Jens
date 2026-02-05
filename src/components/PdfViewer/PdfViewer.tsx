@@ -5,6 +5,22 @@ import './PdfViewer.css';
 // Re-export types from SimplePDF for consumers
 export type { EmbedEvent };
 
+// Helper function to format file size
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+interface DocumentInfo {
+  name: string;
+  size: number;
+  currentPage: number;
+  totalPages: number;
+}
+
 interface PdfViewerProps {
   /** URL to the PDF document to display */
   documentURL?: string;
@@ -35,7 +51,7 @@ export function PdfViewer({
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
-  const [documentName, setDocumentName] = useState<string | null>(null);
+  const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
 
   const setErrorWithCallback = useCallback((errorMessage: string) => {
     setError(errorMessage);
@@ -77,7 +93,12 @@ export function PdfViewer({
       const result = await actions.loadDocument({ dataUrl, name: file.name });
 
       if (result.success) {
-        setDocumentName(file.name);
+        setDocumentInfo({
+          name: file.name,
+          size: file.size,
+          currentPage: 1,
+          totalPages: 0,
+        });
         onDocumentLoaded?.(file.name);
       } else {
         setErrorWithCallback(result.error?.message || 'Failed to load PDF');
@@ -137,6 +158,15 @@ export function PdfViewer({
       setIsLoading(false);
     }
 
+    if (event.type === 'PAGE_FOCUSED') {
+      const { current_page, total_pages } = event.data;
+      setDocumentInfo((prev) => prev ? {
+        ...prev,
+        currentPage: current_page,
+        totalPages: total_pages,
+      } : null);
+    }
+
     onEmbedEvent?.(event);
   }, [onEmbedEvent]);
 
@@ -149,10 +179,22 @@ export function PdfViewer({
     <div className="pdf-viewer">
       <div className="pdf-toolbar">
         <div className="pdf-toolbar-header">
-          <h2>{documentName || 'PDF Viewer'}</h2>
+          <h2>{documentInfo?.name || 'PDF Viewer'}</h2>
           <p>Powered by SimplePDF - View, edit, and sign PDF documents</p>
         </div>
         <div className="pdf-toolbar-actions">
+          {documentInfo && (
+            <div className="pdf-document-info">
+              {documentInfo.totalPages > 0 && (
+                <span className="pdf-page-info">
+                  Page {documentInfo.currentPage} / {documentInfo.totalPages}
+                </span>
+              )}
+              <span className="pdf-size-info">
+                {formatFileSize(documentInfo.size)}
+              </span>
+            </div>
+          )}
           <button
             className="pdf-upload-btn"
             onClick={handleUploadClick}
