@@ -1,26 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { TabNavigation } from './components/Layout/TabNavigation';
-import { ExcelPage } from './pages/ExcelPage';
-import { PdfPage } from './pages/PdfPage';
-import { CadPage } from './pages/CadPage';
-import { IfcPage } from './pages/IfcPage';
+import { IfcViewer } from './components/IFCViewer';
 import './App.css';
 
+// IFC/BIM Viewer mode
 function App() {
   return (
     <BrowserRouter>
-      <div className="app">
-        <TabNavigation />
-        <main className="main-content">
-          <Routes>
-            <Route path="/" element={<Navigate to="/excel" replace />} />
-            <Route path="/excel" element={<ExcelPage />} />
-            <Route path="/pdf" element={<PdfPage />} />
-            <Route path="/cad" element={<CadPage />} />
-            <Route path="/ifc" element={<IfcPage />} />
-          </Routes>
-        </main>
-      </div>
+      <Routes>
+        <Route path="/" element={<Navigate to="/ifc" replace />} />
+        <Route path="/ifc" element={<IfcViewer />} />
+      </Routes>
     </BrowserRouter>
   );
 }
