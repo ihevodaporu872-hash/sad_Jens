@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create a minimal IFC file for testing
 const createTestIfc = (): Buffer => {
@@ -26,7 +31,8 @@ END-ISO-10303-21;
 test.describe('IFC Viewer', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/ifc');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('.ifc-viewer', { timeout: 30000 });
   });
 
   test('should load IFC page with viewer container', async ({ page }) => {
@@ -71,7 +77,7 @@ test.describe('IFC Viewer', () => {
     await expect(container).toBeVisible();
 
     // Check for canvas element (Three.js renders to canvas)
-    const canvas = page.locator('.ifc-container canvas');
+    const canvas = page.locator('.ifc-container canvas').first();
     await expect(canvas).toBeVisible({ timeout: 10000 });
 
     // Verify canvas has reasonable dimensions
@@ -186,7 +192,7 @@ test.describe('IFC Viewer', () => {
     await page.waitForTimeout(4000);
 
     // Canvas should be present (Three.js renderer)
-    const canvas = page.locator('.ifc-container canvas');
+    const canvas = page.locator('.ifc-container canvas').first();
     await expect(canvas).toBeVisible({ timeout: 10000 });
 
     // Canvas should have WebGL context
