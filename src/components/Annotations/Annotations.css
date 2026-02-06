@@ -1,0 +1,194 @@
+/* ── Annotations overlay ──────────────────────────────────────── */
+
+.annotations-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────── */
+
+.ann-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  background-color: rgba(15, 23, 42, 0.92);
+  border-bottom: 1px solid #334155;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  flex-wrap: wrap;
+  z-index: 52;
+}
+
+.ann-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.ann-separator {
+  width: 1px;
+  height: 20px;
+  background-color: #334155;
+  margin: 0 0.25rem;
+}
+
+/* ── Tool buttons ────────────────────────────────────────────── */
+
+.ann-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ann-tool-btn:hover {
+  background-color: #334155;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+.ann-tool-btn.active {
+  background-color: #646cff;
+  border-color: #818cf8;
+  color: #f8fafc;
+}
+
+.ann-tool-btn.active:hover {
+  background-color: #5558e6;
+  border-color: #a5b4fc;
+}
+
+.ann-tool-btn svg {
+  flex-shrink: 0;
+}
+
+/* Danger (Clear All) */
+.ann-danger {
+  border-color: #7f1d1d;
+}
+
+.ann-danger:hover {
+  background-color: #450a0a;
+  border-color: #991b1b;
+  color: #fca5a5;
+}
+
+/* Close */
+.ann-close-btn {
+  border-color: #475569;
+}
+
+.ann-close-btn:hover {
+  background-color: #475569;
+  border-color: #64748b;
+  color: #f8fafc;
+}
+
+/* ── Width toggle ────────────────────────────────────────────── */
+
+.ann-width-btn {
+  padding: 0.375rem 0.625rem;
+  min-width: 32px;
+  justify-content: center;
+}
+
+.ann-width-preview {
+  display: block;
+  width: 16px;
+  background-color: currentColor;
+  border-radius: 1px;
+}
+
+/* ── Color picker ────────────────────────────────────────────── */
+
+.ann-color-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.ann-color-swatch {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px solid #475569;
+  transition: border-color 0.15s;
+}
+
+.ann-color-label:hover .ann-color-swatch {
+  border-color: #94a3b8;
+}
+
+.ann-color-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Let the native color picker open when clicking the swatch */
+.ann-color-label .ann-color-input {
+  pointer-events: auto;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* ── Drawing canvas ──────────────────────────────────────────── */
+
+.ann-canvas {
+  flex: 1;
+  pointer-events: auto;
+  cursor: crosshair;
+  display: block;
+}
+
+/* ── Text input popup ────────────────────────────────────────── */
+
+.ann-text-popup {
+  position: absolute;
+  z-index: 55;
+  pointer-events: auto;
+  transform: translate(0, 4px);
+}
+
+.ann-text-input {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  background-color: #1e293b;
+  border: 1px solid #646cff;
+  border-radius: 4px;
+  color: #f8fafc;
+  outline: none;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.ann-text-input::placeholder {
+  color: #64748b;
+}
+
+.ann-text-input:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 2px rgba(100, 108, 255, 0.25), 0 4px 16px rgba(0, 0, 0, 0.4);
+}

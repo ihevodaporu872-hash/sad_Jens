@@ -7,6 +7,7 @@ import { Quantification } from '../Quantification';
 import { SelectionTree } from '../SelectionTree';
 import { ElementActions } from '../ElementActions';
 import { Annotations } from '../Annotations';
+import { MeasureTools } from '../MeasureTools';
 import { AppearanceProfiler } from '../AppearanceProfiler';
 import { SectionPlanes } from '../SectionPlanes';
 import { getElementProperties } from '../../utils/ifcProperties';
@@ -49,6 +50,9 @@ export function ModelViewerPage() {
 
   // Annotation mode state
   const [annotationActive, setAnnotationActive] = useState(false);
+
+  // Measure mode state
+  const [measureActive, setMeasureActive] = useState(false);
 
   // Spatial tree for SelectionTree
   const [spatialTree, setSpatialTree] = useState<DbSpatialNode[]>([]);
@@ -219,6 +223,16 @@ export function ModelViewerPage() {
 
   const handleAnnotationClose = useCallback(() => {
     setAnnotationActive(false);
+  }, []);
+
+  // ── Measure handler ─────────────────────────────────────────
+
+  const handleMeasureToggle = useCallback(() => {
+    setMeasureActive((prev) => !prev);
+  }, []);
+
+  const handleMeasureClose = useCallback(() => {
+    setMeasureActive(false);
   }, []);
 
   // ── SmartFilter handlers ──────────────────────────────────────
@@ -512,6 +526,8 @@ export function ModelViewerPage() {
           boxSelectActive={boxSelectActive}
           onAnnotationToggle={handleAnnotationToggle}
           annotationActive={annotationActive}
+          onMeasureToggle={handleMeasureToggle}
+          measureActive={measureActive}
         />
         <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <IfcViewer
@@ -523,6 +539,11 @@ export function ModelViewerPage() {
             viewerRef={viewerRef}
             active={annotationActive}
             onClose={handleAnnotationClose}
+          />
+          <MeasureTools
+            viewerRef={viewerRef}
+            active={measureActive}
+            onClose={handleMeasureClose}
           />
         </div>
         {hasModel && <SectionPlanes viewerRef={viewerRef} />}
