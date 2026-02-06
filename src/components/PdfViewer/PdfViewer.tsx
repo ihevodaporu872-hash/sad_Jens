@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect, type DragEvent, type ChangeEvent } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import type { AnnotationModel, AnnotationLayer, AnnotationItem } from './types';
+import { parseXmlMarkup } from './xmlMarkupParser';
+import { parseJsonMarkup } from './jsonMarkupParser';
+import { PdfOverlay } from './PdfOverlay';
+import { AnnotationSidebar } from './AnnotationSidebar';
 import './PdfViewer.css';
 
 // Configure PDF.js worker
@@ -24,8 +29,15 @@ interface DocumentInfo {
   totalPages: number;
 }
 
+interface PageRenderInfo {
+  pageIndex: number;
+  width: number;
+  height: number;
+}
+
 export function PdfViewer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const markupInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
 
@@ -36,29 +48,53 @@ export function PdfViewer() {
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
 
+  // Annotation state
+  const [annotationModel, setAnnotationModel] = useState<AnnotationModel | null>(null);
+  const [layers, setLayers] = useState<AnnotationLayer[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [markupFileName, setMarkupFileName] = useState<string | null>(null);
+  const [pageViewports, setPageViewports] = useState<PageRenderInfo[]>([]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Render a single page to canvas
-  const renderPage = useCallback(async (pdf: pdfjsLib.PDFDocumentProxy, pageNum: number, container: HTMLDivElement, renderScale: number) => {
+  // Render a single page to canvas and return viewport info
+  const renderPage = useCallback(async (
+    pdf: pdfjsLib.PDFDocumentProxy,
+    pageNum: number,
+    container: HTMLDivElement,
+    renderScale: number,
+  ): Promise<PageRenderInfo> => {
     const page = await pdf.getPage(pageNum);
     const viewport = page.getViewport({ scale: renderScale });
 
     const pageDiv = document.createElement('div');
     pageDiv.className = 'pdf-page';
     pageDiv.setAttribute('data-page-number', String(pageNum));
+    pageDiv.style.position = 'relative';
+    pageDiv.style.width = `${viewport.width}px`;
+    pageDiv.style.height = 'auto';
 
     const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
     canvas.height = viewport.height;
     canvas.width = viewport.width;
     canvas.style.display = 'block';
-    canvas.style.margin = '0 auto 16px auto';
 
     pageDiv.appendChild(canvas);
+
+    // Overlay container — will be filled by React portal
+    const overlayContainer = document.createElement('div');
+    overlayContainer.className = 'pdf-overlay-container';
+    overlayContainer.setAttribute('data-overlay-page', String(pageNum));
+    overlayContainer.style.position = 'absolute';
+    overlayContainer.style.top = '0';
+    overlayContainer.style.left = '0';
+    overlayContainer.style.width = `${viewport.width}px`;
+    overlayContainer.style.height = `${viewport.height}px`;
+    overlayContainer.style.pointerEvents = 'none';
+    pageDiv.appendChild(overlayContainer);
 
     // Page number label
     const label = document.createElement('div');
@@ -69,9 +105,15 @@ export function PdfViewer() {
     container.appendChild(pageDiv);
 
     await page.render({
-      canvasContext: context,
-      viewport: viewport,
+      canvas,
+      viewport,
     }).promise;
+
+    return {
+      pageIndex: pageNum,
+      width: viewport.width,
+      height: viewport.height,
+    };
   }, []);
 
   // Render all pages
@@ -81,9 +123,12 @@ export function PdfViewer() {
     // Clear previous content
     containerRef.current.innerHTML = '';
 
+    const viewports: PageRenderInfo[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
-      await renderPage(pdf, i, containerRef.current, renderScale);
+      const info = await renderPage(pdf, i, containerRef.current, renderScale);
+      viewports.push(info);
     }
+    setPageViewports(viewports);
   }, [renderPage]);
 
   // Load PDF from ArrayBuffer
@@ -129,6 +174,41 @@ export function PdfViewer() {
     await loadPdfData(arrayBuffer, file.name, file.size);
   }, [loadPdfData]);
 
+  // --- Markup file loading ---
+  const loadMarkupFile = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const fileName = file.name.toLowerCase();
+      let model: AnnotationModel;
+
+      if (fileName.endsWith('.xml')) {
+        model = parseXmlMarkup(text);
+      } else if (fileName.endsWith('.json')) {
+        model = parseJsonMarkup(text);
+      } else {
+        // Try to detect format
+        const trimmed = text.trim();
+        if (trimmed.startsWith('<') || trimmed.startsWith('<?xml')) {
+          model = parseXmlMarkup(text);
+        } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          model = parseJsonMarkup(text);
+        } else {
+          setError('Unsupported markup format. Use XML or JSON.');
+          return;
+        }
+      }
+
+      setAnnotationModel(model);
+      setLayers(model.layers);
+      setMarkupFileName(file.name);
+      setShowSidebar(true);
+      setSelectedItemId(null);
+    } catch (err) {
+      console.error('Failed to parse markup:', err);
+      setError(err instanceof Error ? err.message : 'Failed to parse markup file');
+    }
+  }, []);
+
   // Handle file upload via input
   const handleFileUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -138,7 +218,16 @@ export function PdfViewer() {
     event.target.value = '';
   }, [loadPdfFile]);
 
-  // Drag & Drop handlers
+  // Handle markup file upload
+  const handleMarkupUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await loadMarkupFile(file);
+    }
+    event.target.value = '';
+  }, [loadMarkupFile]);
+
+  // Drag & Drop handlers — support both PDF and markup files
   const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -156,15 +245,24 @@ export function PdfViewer() {
     event.stopPropagation();
     setIsDragOver(false);
 
-    const files = event.dataTransfer.files;
-    if (files.length > 0) {
-      await loadPdfFile(files[0]);
+    const files = Array.from(event.dataTransfer.files);
+    for (const file of files) {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.pdf') || file.type.includes('pdf')) {
+        await loadPdfFile(file);
+      } else if (name.endsWith('.xml') || name.endsWith('.json')) {
+        await loadMarkupFile(file);
+      }
     }
-  }, [loadPdfFile]);
+  }, [loadPdfFile, loadMarkupFile]);
 
-  // Handle click on upload button
+  // Handle click on upload buttons
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
+  }, []);
+
+  const handleMarkupUploadClick = useCallback(() => {
+    markupInputRef.current?.click();
   }, []);
 
   // Load test file
@@ -210,6 +308,44 @@ export function PdfViewer() {
     }
   }, [scale, renderAllPages]);
 
+  // --- Annotation layer controls ---
+  const handleToggleLayer = useCallback((layerId: string) => {
+    setLayers(prev =>
+      prev.map(l => l.id === layerId ? { ...l, visible: !l.visible } : l),
+    );
+  }, []);
+
+  const handleChangeLayerColor = useCallback((layerId: string, color: string) => {
+    setLayers(prev =>
+      prev.map(l => l.id === layerId ? { ...l, color } : l),
+    );
+  }, []);
+
+  const handleChangeLayerOpacity = useCallback((layerId: string, opacity: number) => {
+    setLayers(prev =>
+      prev.map(l => l.id === layerId ? { ...l, opacity } : l),
+    );
+  }, []);
+
+  const handleSelectItem = useCallback((item: AnnotationItem) => {
+    setSelectedItemId(prev => prev === item.id ? null : item.id);
+    // Scroll to the page of the selected item
+    if (containerRef.current) {
+      const pageEl = containerRef.current.querySelector(`[data-page-number="${item.page}"]`);
+      if (pageEl) {
+        pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, []);
+
+  const handleOverlayItemClick = useCallback((item: AnnotationItem) => {
+    setSelectedItemId(prev => prev === item.id ? null : item.id);
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    setShowSidebar(false);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -220,108 +356,253 @@ export function PdfViewer() {
   }, []);
 
   return (
-    <div className="pdf-viewer">
-      <div className="pdf-toolbar">
-        <div className="pdf-toolbar-header">
-          <h2>{documentInfo?.name || 'PDF Viewer'}</h2>
-          <p>View PDF documents locally with pdf.js</p>
+    <div className="pdf-viewer-wrapper">
+      <div className={`pdf-viewer ${showSidebar ? 'with-sidebar' : ''}`}>
+        <div className="pdf-toolbar">
+          <div className="pdf-toolbar-header">
+            <h2>{documentInfo?.name || 'PDF Viewer'}</h2>
+            <p>
+              View PDF with annotation overlay
+              {markupFileName && (
+                <span className="markup-file-badge"> | Markup: {markupFileName}</span>
+              )}
+            </p>
+          </div>
+          <div className="pdf-toolbar-actions">
+            {documentInfo && (
+              <div className="pdf-document-info">
+                <span className="pdf-page-info">
+                  Page {currentPage} / {documentInfo.totalPages}
+                </span>
+                <span className="pdf-size-info">
+                  {formatFileSize(documentInfo.size)}
+                </span>
+              </div>
+            )}
+            {documentInfo && (
+              <>
+                <button className="pdf-btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+                  Prev
+                </button>
+                <button className="pdf-btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= documentInfo.totalPages}>
+                  Next
+                </button>
+                <button className="pdf-btn" onClick={handleZoomOut} disabled={scale <= 0.5}>
+                  -
+                </button>
+                <span style={{ color: '#e0e0e0', fontSize: '0.8rem' }}>{Math.round(scale * 100)}%</span>
+                <button className="pdf-btn" onClick={handleZoomIn} disabled={scale >= 4}>
+                  +
+                </button>
+              </>
+            )}
+            <button
+              className="pdf-upload-btn"
+              onClick={handleUploadClick}
+              disabled={isLoading}
+            >
+              Upload PDF
+            </button>
+            <button
+              className="pdf-btn pdf-markup-btn"
+              onClick={handleMarkupUploadClick}
+              disabled={isLoading || !documentInfo}
+              title="Load XML or JSON markup file"
+            >
+              Load Markup
+            </button>
+            {layers.length > 0 && (
+              <button
+                className={`pdf-btn ${showSidebar ? 'pdf-btn-active' : ''}`}
+                onClick={() => setShowSidebar(!showSidebar)}
+                title="Toggle annotation sidebar"
+              >
+                Layers
+              </button>
+            )}
+            <button
+              className="pdf-btn"
+              onClick={loadTestFile}
+              disabled={isLoading}
+              data-testid="load-test-pdf"
+            >
+              Load Test PDF
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              onChange={handleFileUpload}
+              className="pdf-file-input"
+              disabled={isLoading}
+            />
+            <input
+              ref={markupInputRef}
+              type="file"
+              accept=".xml,.json,application/xml,application/json,text/xml"
+              onChange={handleMarkupUpload}
+              className="pdf-file-input"
+              disabled={isLoading}
+            />
+          </div>
         </div>
-        <div className="pdf-toolbar-actions">
-          {documentInfo && (
-            <div className="pdf-document-info">
-              <span className="pdf-page-info">
-                Page {currentPage} / {documentInfo.totalPages}
-              </span>
-              <span className="pdf-size-info">
-                {formatFileSize(documentInfo.size)}
-              </span>
+        <div
+          className={`pdf-container ${isDragOver ? 'pdf-drag-over' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <div ref={containerRef} className="pdf-pages-container" data-testid="pdf-pages-container" />
+
+          {/* SVG Overlays rendered on top of each page */}
+          {layers.length > 0 && pageViewports.map(({ pageIndex, width, height }) => (
+            <PdfPageOverlay
+              key={`overlay-${pageIndex}-${scale}`}
+              containerRef={containerRef}
+              pageIndex={pageIndex}
+              width={width}
+              height={height}
+              layers={layers}
+              selectedItemId={selectedItemId}
+              onItemClick={handleOverlayItemClick}
+              scale={scale}
+            />
+          ))}
+
+          {isLoading && (
+            <div className="pdf-overlay">
+              <div className="pdf-spinner" />
+              <p>Loading PDF...</p>
             </div>
           )}
-          {documentInfo && (
-            <>
-              <button className="pdf-btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
-                Prev
-              </button>
-              <button className="pdf-btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= documentInfo.totalPages}>
-                Next
-              </button>
-              <button className="pdf-btn" onClick={handleZoomOut} disabled={scale <= 0.5}>
-                -
-              </button>
-              <span style={{ color: '#e0e0e0', fontSize: '0.8rem' }}>{Math.round(scale * 100)}%</span>
-              <button className="pdf-btn" onClick={handleZoomIn} disabled={scale >= 4}>
-                +
-              </button>
-            </>
+
+          {error && (
+            <div className="pdf-overlay pdf-error">
+              <p>Error: {error}</p>
+              <button className="pdf-btn" onClick={clearError}>Dismiss</button>
+            </div>
           )}
-          <button
-            className="pdf-upload-btn"
-            onClick={handleUploadClick}
-            disabled={isLoading}
-          >
-            Upload PDF
-          </button>
-          <button
-            className="pdf-btn"
-            onClick={loadTestFile}
-            disabled={isLoading}
-            data-testid="load-test-pdf"
-          >
-            Load Test PDF
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            onChange={handleFileUpload}
-            className="pdf-file-input"
-            disabled={isLoading}
-          />
+
+          {isDragOver && (
+            <div className="pdf-overlay pdf-drag-overlay">
+              <p>Drop PDF or markup file here</p>
+            </div>
+          )}
+
+          {!documentInfo && !isLoading && !error && (
+            <div className="pdf-overlay">
+              <div style={{ textAlign: 'center' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.5 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="18" x2="12" y2="12" />
+                  <line x1="9" y1="15" x2="15" y2="15" />
+                </svg>
+                <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Drop PDF + markup files here</p>
+                <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>or click "Upload PDF" and "Load Markup" buttons above</p>
+                <p style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.5rem' }}>Supports XML and JSON markup formats</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-      <div
-        className={`pdf-container ${isDragOver ? 'pdf-drag-over' : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <div ref={containerRef} className="pdf-pages-container" data-testid="pdf-pages-container" />
 
-        {isLoading && (
-          <div className="pdf-overlay">
-            <div className="pdf-spinner" />
-            <p>Loading PDF...</p>
-          </div>
-        )}
+      {showSidebar && layers.length > 0 && (
+        <AnnotationSidebar
+          layers={layers}
+          selectedItemId={selectedItemId}
+          onToggleLayer={handleToggleLayer}
+          onChangeLayerColor={handleChangeLayerColor}
+          onChangeLayerOpacity={handleChangeLayerOpacity}
+          onSelectItem={handleSelectItem}
+          onClose={handleCloseSidebar}
+        />
+      )}
+    </div>
+  );
+}
 
-        {error && (
-          <div className="pdf-overlay pdf-error">
-            <p>Error: {error}</p>
-            <button className="pdf-btn" onClick={clearError}>Dismiss</button>
-          </div>
-        )}
+// --- Helper component to position SVG overlay on a specific page ---
 
-        {isDragOver && (
-          <div className="pdf-overlay pdf-drag-overlay">
-            <p>Drop PDF file here</p>
-          </div>
-        )}
+interface PdfPageOverlayProps {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  pageIndex: number;
+  width: number;
+  height: number;
+  layers: AnnotationLayer[];
+  selectedItemId: string | null;
+  onItemClick: (item: AnnotationItem) => void;
+  scale: number;
+}
 
-        {!documentInfo && !isLoading && !error && (
-          <div className="pdf-overlay">
-            <div style={{ textAlign: 'center' }}>
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.5 }}>
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="12" y1="18" x2="12" y2="12" />
-                <line x1="9" y1="15" x2="15" y2="15" />
-              </svg>
-              <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Drop a PDF file here</p>
-              <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>or click "Upload PDF" / "Load Test PDF" button above</p>
-            </div>
-          </div>
-        )}
-      </div>
+function PdfPageOverlay({
+  containerRef,
+  pageIndex,
+  width,
+  height,
+  layers,
+  selectedItemId,
+  onItemClick,
+  scale,
+}: PdfPageOverlayProps) {
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const pageEl = containerRef.current.querySelector(`[data-page-number="${pageIndex}"]`) as HTMLElement;
+    if (!pageEl) return;
+
+    // Position overlay relative to the pdf-container (which has position: relative)
+    const updatePosition = () => {
+      const containerRect = containerRef.current!.getBoundingClientRect();
+      const pageRect = pageEl.getBoundingClientRect();
+      setPosition({
+        top: pageRect.top - containerRect.top + containerRef.current!.scrollTop,
+        left: pageRect.left - containerRect.left + containerRef.current!.scrollLeft,
+      });
+    };
+
+    updatePosition();
+
+    // Update on scroll
+    const scrollContainer = containerRef.current.parentElement;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', updatePosition);
+      return () => scrollContainer.removeEventListener('scroll', updatePosition);
+    }
+  }, [containerRef, pageIndex, scale, width, height]);
+
+  if (!position) return null;
+
+  // Check if any visible layer has items on this page
+  const hasItems = layers.some(
+    l => l.visible && l.items.some(i => i.page === pageIndex),
+  );
+  if (!hasItems) return null;
+
+  return (
+    <div
+      ref={overlayRef}
+      style={{
+        position: 'absolute',
+        top: position.top,
+        left: position.left,
+        width: width,
+        height: height,
+        pointerEvents: 'none',
+        zIndex: 5,
+      }}
+    >
+      <PdfOverlay
+        pageIndex={pageIndex}
+        viewportWidth={width}
+        viewportHeight={height}
+        layers={layers}
+        selectedItemId={selectedItemId}
+        onItemClick={onItemClick}
+      />
     </div>
   );
 }

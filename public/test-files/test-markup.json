@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "layers": [
+    {
+      "id": "measurements",
+      "name": "Measurements",
+      "color": "#ff0000",
+      "opacity": 0.8,
+      "visible": true,
+      "items": [
+        {
+          "id": "dim-1",
+          "page": 1,
+          "kind": "dimension_line",
+          "label": "Wall A",
+          "points": [
+            { "x": 100, "y": 150 },
+            { "x": 400, "y": 150 }
+          ]
+        },
+        {
+          "id": "dim-2",
+          "page": 1,
+          "kind": "count_point",
+          "label": "Marker 1",
+          "points": [
+            { "x": 300, "y": 250 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "areas",
+      "name": "Areas",
+      "color": "#00aa00",
+      "opacity": 0.6,
+      "visible": true,
+      "items": [
+        {
+          "id": "area-1",
+          "page": 1,
+          "kind": "area_polygon",
+          "label": "Office",
+          "closed": true,
+          "points": [
+            { "x": 200, "y": 350 },
+            { "x": 450, "y": 350 },
+            { "x": 450, "y": 550 },
+            { "x": 200, "y": 550 }
+          ]
+        }
+      ]
+    }
+  ]
+}
