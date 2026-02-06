@@ -10,6 +10,10 @@ export interface ElementActionsProps {
   onColorSelected: (color: string) => void;
   onResetColors: () => void;
   onInvertSelection: () => void;
+  onZoomToSelected?: () => void;
+  onZoomToFit?: () => void;
+  onBoxSelectToggle?: () => void;
+  boxSelectActive?: boolean;
   className?: string;
 }
 
@@ -22,6 +26,10 @@ export function ElementActions({
   onColorSelected,
   onResetColors,
   onInvertSelection,
+  onZoomToSelected,
+  onZoomToFit,
+  onBoxSelectToggle,
+  boxSelectActive,
   className,
 }: ElementActionsProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -127,6 +135,53 @@ export function ElementActions({
         </svg>
         <span>Invert</span>
       </button>
+
+      <div className="ea-separator" />
+
+      {onZoomToSelected && (
+        <button
+          className="ea-btn"
+          onClick={onZoomToSelected}
+          disabled={!hasSelection}
+          title="Zoom to selected elements"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+          <span>Zoom Sel</span>
+        </button>
+      )}
+
+      {onZoomToFit && (
+        <button
+          className="ea-btn"
+          onClick={onZoomToFit}
+          disabled={!hasModel}
+          title="Zoom to fit entire model"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+          </svg>
+          <span>Zoom Fit</span>
+        </button>
+      )}
+
+      {onBoxSelectToggle && (
+        <button
+          className={`ea-btn ${boxSelectActive ? 'ea-btn-active' : ''}`}
+          onClick={onBoxSelectToggle}
+          disabled={!hasModel}
+          title="Box select mode"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="5,3" />
+          </svg>
+          <span>Box Sel</span>
+        </button>
+      )}
     </div>
   );
 }

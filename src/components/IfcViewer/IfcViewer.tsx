@@ -389,6 +389,56 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         getSelectedExpressIds() {
           return Array.from(selectedIdsRef.current);
         },
+
+        zoomToSelected() {
+          const ids = Array.from(selectedIdsRef.current);
+          if (ids.length === 0) return;
+          const box = new THREE.Box3();
+          let hasGeometry = false;
+          for (const eid of ids) {
+            const meshes = expressIdToMeshesRef.current.get(eid);
+            if (!meshes) continue;
+            for (const mesh of meshes) {
+              if (!mesh.visible) continue;
+              const meshBox = new THREE.Box3().setFromObject(mesh);
+              box.union(meshBox);
+              hasGeometry = true;
+            }
+          }
+          if (!hasGeometry || !cameraRef.current || !controlsRef.current) return;
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const distance = maxDim * 2.5;
+          const direction = cameraRef.current.position.clone().sub(controlsRef.current.target).normalize();
+          const newPos = center.clone().add(direction.multiplyScalar(distance));
+          cameraRef.current.position.copy(newPos);
+          controlsRef.current.target.copy(center);
+          controlsRef.current.update();
+        },
+
+        zoomToFit() {
+          const modelGroup = modelGroupRef.current;
+          if (!modelGroup || modelGroup.children.length === 0) return;
+          if (!cameraRef.current || !controlsRef.current) return;
+          const box = new THREE.Box3().setFromObject(modelGroup);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const distance = maxDim * 2.5;
+          const direction = cameraRef.current.position.clone().sub(controlsRef.current.target).normalize();
+          const newPos = center.clone().add(direction.multiplyScalar(distance));
+          cameraRef.current.position.copy(newPos);
+          controlsRef.current.target.copy(center);
+          controlsRef.current.update();
+        },
+
+        getScene() { return sceneRef.current; },
+        getCamera() { return cameraRef.current; },
+        getRenderer() { return rendererRef.current; },
+        getControls() { return controlsRef.current; },
+        getModelGroup() { return modelGroupRef.current; },
+        getExpressIdToMeshes() { return expressIdToMeshesRef.current as Map<number, unknown[]>; },
       }),
       [applyHighlightToMesh, restoreMaterial, storeOriginalMaterial, applySelectionHighlight, removeSelectionHighlight, onElementSelected, onSelectionChanged]
     );

@@ -62,3 +62,21 @@
 .ea-btn-color:hover:not(:disabled) {
   border-color: #fbbf24;
 }
+
+.ea-separator {
+  width: 1px;
+  height: 20px;
+  background-color: #334155;
+  margin: 0 0.125rem;
+}
+
+.ea-btn-active {
+  background-color: #646cff;
+  border-color: #818cf8;
+  color: #f8fafc;
+}
+
+.ea-btn-active:hover:not(:disabled) {
+  background-color: #5558e6;
+  border-color: #a5b4fc;
+}

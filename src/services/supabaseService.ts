@@ -5,7 +5,7 @@
 
 import { supabase } from '../lib/supabase';
 import type { DbIfcModel, DbIfcElement, DbSpatialNode, DbWorkset } from '../lib/supabase';
-import type { ElementIndexEntry, QuantificationRow, Workset } from '../types/ifc';
+import type { ElementIndexEntry, QuantificationRow, Workset, IfcElementInfo, IfcPropertySet } from '../types/ifc';
 
 // ── Models ──────────────────────────────────────────────────────
 
@@ -110,6 +110,72 @@ export async function getQuantificationByFloor(modelId: string): Promise<Quantif
     totalArea: r.total_area || 0,
     expressIds: r.express_ids || [],
   }));
+}
+
+export async function getQuantificationByMaterial(modelId: string): Promise<QuantificationRow[]> {
+  const { data, error } = await supabase
+    .from('v_quantification_by_material')
+    .select('*')
+    .eq('model_id', modelId);
+  if (error) throw error;
+  return (data || []).map((r) => ({
+    groupKey: r.material || 'No Material',
+    count: r.element_count,
+    totalVolume: r.total_volume || 0,
+    totalArea: r.total_area || 0,
+    expressIds: r.express_ids || [],
+  }));
+}
+
+// ── Map DB element to frontend IfcElementInfo ────────────────────
+
+export function dbElementToIfcElementInfo(db: DbIfcElement): IfcElementInfo {
+  const propertySets: IfcPropertySet[] = [];
+  if (db.property_sets && typeof db.property_sets === 'object') {
+    for (const [psetName, props] of Object.entries(db.property_sets)) {
+      if (typeof props === 'object' && props !== null) {
+        propertySets.push({
+          name: psetName,
+          properties: Object.entries(props).map(([k, v]) => ({
+            name: k,
+            value: v as string | number | boolean | null,
+          })),
+        });
+      }
+    }
+  }
+  if (db.quantity_sets && typeof db.quantity_sets === 'object') {
+    for (const [qtoName, quantities] of Object.entries(db.quantity_sets)) {
+      if (typeof quantities === 'object' && quantities !== null) {
+        propertySets.push({
+          name: qtoName,
+          properties: Object.entries(quantities).map(([k, v]) => ({
+            name: k,
+            value: v as string | number | boolean | null,
+          })),
+        });
+      }
+    }
+  }
+
+  return {
+    expressId: db.express_id,
+    globalId: db.global_id || '',
+    ifcType: db.ifc_type,
+    name: db.name || '',
+    description: db.description || undefined,
+    keyParams: {
+      volume: db.volume ? db.volume.toFixed(3) : undefined,
+      area: db.area ? db.area.toFixed(3) : undefined,
+      height: db.height ? db.height.toFixed(3) : undefined,
+      length: db.length ? db.length.toFixed(3) : undefined,
+      floor: db.floor_name || undefined,
+      concreteClass: db.concrete_class || undefined,
+    },
+    propertySets,
+    materials: db.materials || [],
+    classifications: db.classifications || [],
+  };
 }
 
 // ── Spatial tree ────────────────────────────────────────────────

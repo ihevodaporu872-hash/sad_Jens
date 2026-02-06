@@ -125,6 +125,14 @@ export interface IfcViewerRef {
   getIfcApi: () => unknown | null;
   getSelectedExpressIds: () => number[];
   getAllExpressIds: () => number[];
+  zoomToSelected: () => void;
+  zoomToFit: () => void;
+  getScene: () => unknown | null;
+  getCamera: () => unknown | null;
+  getRenderer: () => unknown | null;
+  getControls: () => unknown | null;
+  getModelGroup: () => unknown | null;
+  getExpressIdToMeshes: () => Map<number, unknown[]>;
 }
 
 // Viewer props

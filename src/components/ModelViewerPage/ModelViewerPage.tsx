@@ -5,8 +5,8 @@ import { WorksetsWidget } from '../WorksetsWidget';
 import { SmartFilter } from '../SmartFilter';
 import { Quantification } from '../Quantification';
 import { ElementActions } from '../ElementActions';
-import { getElementProperties, buildElementIndex } from '../../utils/ifcProperties';
-import * as worksetApi from '../../services/worksetService';
+import { getElementProperties } from '../../utils/ifcProperties';
+import * as supabaseApi from '../../services/supabaseService';
 import type {
   IfcViewerRef,
   IfcElementInfo,
@@ -15,9 +15,6 @@ import type {
   ElementIndexEntry,
 } from '../../types/ifc';
 import './ModelViewerPage.css';
-
-// Use a fixed model ID for now (could be dynamic from URL params later)
-const MODEL_ID = 'default';
 
 type LeftTab = 'worksets' | 'filter' | 'quantification';
 
@@ -40,56 +37,72 @@ export function ModelViewerPage() {
 
   // Element index for SmartFilter & Quantification
   const [elementIndex, setElementIndex] = useState<ElementIndexEntry[]>([]);
-  const [indexProgress, setIndexProgress] = useState<{ done: number; total: number } | null>(null);
   const [hasModel, setHasModel] = useState(false);
 
-  // Load worksets on mount
+  // Supabase model ID — loaded from DB or fallback to first available model
+  const [supabaseModelId, setSupabaseModelId] = useState<string | null>(null);
+
+  // Load Supabase model + worksets on mount
   useEffect(() => {
-    loadWorksets();
+    loadSupabaseData();
   }, []);
 
-  const loadWorksets = async () => {
+  const loadSupabaseData = async () => {
     try {
-      const data = await worksetApi.getWorksets(MODEL_ID);
-      setWorksets(data);
+      // Find the first available model in Supabase
+      const models = await supabaseApi.getModels();
+      if (models.length > 0) {
+        const model = models[0];
+        setSupabaseModelId(model.id);
+        console.log(`[Supabase] Using model: ${model.name} (${model.id})`);
+
+        // Load worksets from Supabase
+        try {
+          const data = await supabaseApi.getWorksets(model.id);
+          setWorksets(data);
+        } catch (err) {
+          console.warn('[Worksets] Failed to load worksets:', err);
+        }
+
+        // Load element index from Supabase (instant, no client-side indexing)
+        try {
+          const index = await supabaseApi.getElementIndex(model.id);
+          setElementIndex(index);
+          console.log(`[Supabase] Loaded element index: ${index.length} entries`);
+        } catch (err) {
+          console.warn('[Supabase] Failed to load element index:', err);
+        }
+      } else {
+        console.warn('[Supabase] No models found in database — using client-side indexing');
+      }
     } catch (err) {
-      // Server may not be running — that's OK for now
-      console.warn('[Worksets] Failed to load worksets:', err);
+      console.warn('[Supabase] Failed to connect:', err);
     }
   };
-
-  // Build element index after model is loaded
-  const buildIndex = useCallback(async () => {
-    const ifcApi = viewerRef.current?.getIfcApi();
-    const modelId = viewerRef.current?.getModelId();
-    const allIds = viewerRef.current?.getAllExpressIds() ?? [];
-
-    if (!ifcApi || modelId === null || modelId === undefined || allIds.length === 0) return;
-
-    setIndexProgress({ done: 0, total: allIds.length });
-    try {
-      const index = await buildElementIndex(ifcApi, modelId, allIds, (done, total) => {
-        setIndexProgress({ done, total });
-      });
-      setElementIndex(index);
-      setIndexProgress(null);
-      console.log(`[Index] Built element index: ${index.length} entries`);
-    } catch (err) {
-      console.error('[Index] Failed to build element index:', err);
-      setIndexProgress(null);
-    }
-  }, []);
 
   // ── Viewer callbacks ──────────────────────────────────────────
 
   const handleElementSelected = useCallback(
-    (selection: ElementSelection | null) => {
+    async (selection: ElementSelection | null) => {
       if (!selection) {
         setElementInfo(null);
         return;
       }
 
-      // Get properties from web-ifc
+      // Try Supabase first (richer data from Python parser)
+      if (supabaseModelId) {
+        try {
+          const dbElement = await supabaseApi.getElementProperties(supabaseModelId, selection.expressId);
+          if (dbElement) {
+            setElementInfo(supabaseApi.dbElementToIfcElementInfo(dbElement));
+            return;
+          }
+        } catch {
+          // Fall through to web-ifc
+        }
+      }
+
+      // Fallback: Get properties from web-ifc
       const ifcApi = viewerRef.current?.getIfcApi();
       const modelId = viewerRef.current?.getModelId();
       if (ifcApi && modelId !== null && modelId !== undefined) {
@@ -97,7 +110,7 @@ export function ModelViewerPage() {
         setElementInfo(info);
       }
     },
-    []
+    [supabaseModelId]
   );
 
   const handleSelectionChanged = useCallback(
@@ -113,12 +126,11 @@ export function ModelViewerPage() {
       const allIds = viewerRef.current?.getAllExpressIds() ?? [];
       if (allIds.length > 0 && !hasModel) {
         setHasModel(true);
-        buildIndex();
         clearInterval(interval);
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [hasModel, buildIndex]);
+  }, [hasModel]);
 
   // ── Element Actions ──────────────────────────────────────────
 
@@ -158,6 +170,16 @@ export function ModelViewerPage() {
     viewerRef.current?.selectElements(inverted);
   }, []);
 
+  // ── Zoom handlers ──────────────────────────────────────────────
+
+  const handleZoomToSelected = useCallback(() => {
+    viewerRef.current?.zoomToSelected();
+  }, []);
+
+  const handleZoomToFit = useCallback(() => {
+    viewerRef.current?.zoomToFit();
+  }, []);
+
   // ── SmartFilter handlers ──────────────────────────────────────
 
   const handleFilterSelectElements = useCallback((expressIds: number[]) => {
@@ -178,24 +200,24 @@ export function ModelViewerPage() {
 
   const handleCreateWorkset = useCallback(async () => {
     const ids = viewerRef.current?.getSelectedExpressIds() ?? [];
-    if (ids.length === 0) return;
+    if (ids.length === 0 || !supabaseModelId) return;
 
     try {
-      const ws = await worksetApi.createWorkset(MODEL_ID, {
+      const ws = await supabaseApi.createWorkset(supabaseModelId, {
         name: `Workset ${worksets.length + 1}`,
         color: '#FF8800',
         opacity: 0.5,
-        elementIds: { expressIds: ids, globalIds: [] },
+        expressIds: ids,
       });
       setWorksets((prev) => [...prev, ws]);
     } catch (err) {
       console.error('[Worksets] Failed to create:', err);
     }
-  }, [worksets.length]);
+  }, [worksets.length, supabaseModelId]);
 
   const handleDeleteWorkset = useCallback(async (worksetId: string) => {
     try {
-      await worksetApi.deleteWorkset(MODEL_ID, worksetId);
+      await supabaseApi.deleteWorkset(worksetId);
       setWorksets((prev) => prev.filter((w) => w.id !== worksetId));
       viewerRef.current?.clearHighlight(worksetId);
       if (selectedWorksetId === worksetId) {
@@ -209,7 +231,7 @@ export function ModelViewerPage() {
 
   const handleRenameWorkset = useCallback(async (worksetId: string, newName: string) => {
     try {
-      const updated = await worksetApi.updateWorkset(MODEL_ID, worksetId, { name: newName });
+      const updated = await supabaseApi.updateWorkset(worksetId, { name: newName });
       setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
     } catch (err) {
       console.error('[Worksets] Failed to rename:', err);
@@ -218,7 +240,7 @@ export function ModelViewerPage() {
 
   const handleColorChange = useCallback(async (worksetId: string, color: string) => {
     try {
-      const updated = await worksetApi.updateWorkset(MODEL_ID, worksetId, { color });
+      const updated = await supabaseApi.updateWorkset(worksetId, { color });
       setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
 
       // If this workset is currently highlighted, re-apply with new color
@@ -238,7 +260,7 @@ export function ModelViewerPage() {
 
   const handleOpacityChange = useCallback(async (worksetId: string, opacity: number) => {
     try {
-      const updated = await worksetApi.updateWorkset(MODEL_ID, worksetId, { opacity });
+      const updated = await supabaseApi.updateWorkset(worksetId, { opacity });
       setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
 
       if (selectedWorksetId === worksetId) {
@@ -288,8 +310,8 @@ export function ModelViewerPage() {
 
     const merged = Array.from(new Set([...ws.elementIds.expressIds, ...ids]));
     try {
-      const updated = await worksetApi.updateWorkset(MODEL_ID, worksetId, {
-        elementIds: { expressIds: merged, globalIds: ws.elementIds.globalIds },
+      const updated = await supabaseApi.updateWorkset(worksetId, {
+        expressIds: merged,
       });
       setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
     } catch (err) {
@@ -307,8 +329,8 @@ export function ModelViewerPage() {
     const removeSet = new Set(ids);
     const remaining = ws.elementIds.expressIds.filter((eid) => !removeSet.has(eid));
     try {
-      const updated = await worksetApi.updateWorkset(MODEL_ID, worksetId, {
-        elementIds: { expressIds: remaining, globalIds: ws.elementIds.globalIds },
+      const updated = await supabaseApi.updateWorkset(worksetId, {
+        expressIds: remaining,
       });
       setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
 
@@ -401,18 +423,9 @@ export function ModelViewerPage() {
           onColorSelected={handleColorSelected}
           onResetColors={handleResetColors}
           onInvertSelection={handleInvertSelection}
+          onZoomToSelected={handleZoomToSelected}
+          onZoomToFit={handleZoomToFit}
         />
-        {indexProgress && (
-          <div className="index-progress-bar">
-            <div
-              className="index-progress-fill"
-              style={{ width: `${Math.round((indexProgress.done / indexProgress.total) * 100)}%` }}
-            />
-            <span className="index-progress-text">
-              Indexing properties... {indexProgress.done}/{indexProgress.total}
-            </span>
-          </div>
-        )}
         <IfcViewer
           ref={viewerRef}
           onElementSelected={handleElementSelected}
