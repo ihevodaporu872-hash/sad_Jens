@@ -6,6 +6,8 @@ import { SmartFilter } from '../SmartFilter';
 import { Quantification } from '../Quantification';
 import { SelectionTree } from '../SelectionTree';
 import { ElementActions } from '../ElementActions';
+import { Annotations } from '../Annotations';
+import { AppearanceProfiler } from '../AppearanceProfiler';
 import { SectionPlanes } from '../SectionPlanes';
 import { getElementProperties } from '../../utils/ifcProperties';
 import * as supabaseApi from '../../services/supabaseService';
@@ -19,7 +21,7 @@ import type {
 import type { DbSpatialNode } from '../../lib/supabase';
 import './ModelViewerPage.css';
 
-type LeftTab = 'worksets' | 'filter' | 'quantification' | 'tree';
+type LeftTab = 'worksets' | 'filter' | 'quantification' | 'tree' | 'profiler';
 
 export function ModelViewerPage() {
   const viewerRef = useRef<IfcViewerRef>(null);
@@ -44,6 +46,9 @@ export function ModelViewerPage() {
 
   // Box select state
   const [boxSelectActive, setBoxSelectActive] = useState(false);
+
+  // Annotation mode state
+  const [annotationActive, setAnnotationActive] = useState(false);
 
   // Spatial tree for SelectionTree
   const [spatialTree, setSpatialTree] = useState<DbSpatialNode[]>([]);
@@ -198,6 +203,24 @@ export function ModelViewerPage() {
     viewerRef.current?.zoomToFit();
   }, []);
 
+  // ── Box Select handler ──────────────────────────────────────────
+
+  const handleBoxSelectToggle = useCallback(() => {
+    const next = !boxSelectActive;
+    setBoxSelectActive(next);
+    viewerRef.current?.setBoxSelectMode(next);
+  }, [boxSelectActive]);
+
+  // ── Annotation handler ─────────────────────────────────────────
+
+  const handleAnnotationToggle = useCallback(() => {
+    setAnnotationActive((prev) => !prev);
+  }, []);
+
+  const handleAnnotationClose = useCallback(() => {
+    setAnnotationActive(false);
+  }, []);
+
   // ── SmartFilter handlers ──────────────────────────────────────
 
   const handleFilterSelectElements = useCallback((expressIds: number[]) => {
@@ -218,6 +241,16 @@ export function ModelViewerPage() {
 
   const handleTreeSelectElements = useCallback((expressIds: number[]) => {
     viewerRef.current?.selectElements(expressIds);
+  }, []);
+
+  // ── AppearanceProfiler handlers ───────────────────────────
+
+  const handleProfilerColorElements = useCallback((expressIds: number[], color: string) => {
+    viewerRef.current?.colorElements(expressIds, color);
+  }, []);
+
+  const handleProfilerResetColors = useCallback(() => {
+    viewerRef.current?.resetColors();
   }, []);
 
   // ── Workset handlers ──────────────────────────────────────────
@@ -408,6 +441,12 @@ export function ModelViewerPage() {
             >
               Tree
             </button>
+            <button
+              className={`sidebar-tab ${leftTab === 'profiler' ? 'active' : ''}`}
+              onClick={() => setLeftTab('profiler')}
+            >
+              Profiler
+            </button>
           </div>
 
           {/* Tab content */}
@@ -446,6 +485,13 @@ export function ModelViewerPage() {
               onSelectElements={handleTreeSelectElements}
             />
           )}
+          {leftTab === 'profiler' && (
+            <AppearanceProfiler
+              elementIndex={elementIndex}
+              onColorElements={handleProfilerColorElements}
+              onResetColors={handleProfilerResetColors}
+            />
+          )}
         </aside>
       )}
 
@@ -462,6 +508,8 @@ export function ModelViewerPage() {
           onInvertSelection={handleInvertSelection}
           onZoomToSelected={handleZoomToSelected}
           onZoomToFit={handleZoomToFit}
+          onBoxSelectToggle={handleBoxSelectToggle}
+          boxSelectActive={boxSelectActive}
         />
         <IfcViewer
           ref={viewerRef}
