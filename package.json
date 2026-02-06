@@ -17,7 +17,8 @@
     "e2e:headed": "playwright test --headed",
     "e2e:debug": "playwright test --debug",
     "server": "node server/index.js",
-    "dev:all": "node server/index.js & vite"
+    "dev:all": "node server/index.js & vite",
+    "postinstall": "node -e \"const fs=require('fs');const p='public/assets';fs.mkdirSync(p,{recursive:true});[['node_modules/@mlightcad/cad-simple-viewer/dist/libredwg-parser-worker.js'],['node_modules/@mlightcad/data-model/dist/dxf-parser-worker.js'],['node_modules/@mlightcad/cad-simple-viewer/dist/mtext-renderer-worker.js']].forEach(([f])=>{try{fs.copyFileSync(f,p+'/'+f.split('/').pop());console.log('Copied:',f.split('/').pop())}catch(e){console.warn('Skip:',f)}})\""
   },
   "dependencies": {
     "@mlightcad/cad-simple-viewer": "^1.4.7",

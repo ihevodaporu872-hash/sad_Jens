@@ -9,6 +9,9 @@ import './CadViewer.css';
 /** Supported CAD file extensions */
 const SUPPORTED_EXTENSIONS = ['.dwg', '.dxf'];
 
+/** DWG magic bytes: files start with "AC" followed by version (e.g. AC1032) */
+const DWG_MAGIC = new Uint8Array([0x41, 0x43]); // "AC"
+
 /** Helper function to get user-friendly error messages */
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -28,6 +31,9 @@ function getErrorMessage(error: unknown): string {
     if (msg.includes('timeout')) {
       return 'Loading timed out. The file may be too large or the connection is slow.';
     }
+    if (msg.includes('worker')) {
+      return 'CAD parser worker failed to load. Worker files may be missing from /assets/.';
+    }
     return error.message;
   }
   return 'An unexpected error occurred. Please try again.';
@@ -37,6 +43,19 @@ function getErrorMessage(error: unknown): string {
 function isValidCadFile(fileName: string): boolean {
   const lowerName = fileName.toLowerCase();
   return SUPPORTED_EXTENSIONS.some(ext => lowerName.endsWith(ext));
+}
+
+/** Validate DWG file header magic bytes */
+function validateDwgHeader(buffer: ArrayBuffer): { valid: boolean; version?: string } {
+  if (buffer.byteLength < 6) {
+    return { valid: false };
+  }
+  const header = new Uint8Array(buffer, 0, 6);
+  if (header[0] !== DWG_MAGIC[0] || header[1] !== DWG_MAGIC[1]) {
+    return { valid: false };
+  }
+  const version = String.fromCharCode(...header);
+  return { valid: true, version };
 }
 
 /** Props for the CadViewer component */
@@ -168,17 +187,31 @@ export function CadViewer({
 
     try {
       const arrayBuffer = await file.arrayBuffer();
+
+      // Validate DWG file header before sending to parser
+      if (file.name.toLowerCase().endsWith('.dwg')) {
+        const { valid, version } = validateDwgHeader(arrayBuffer);
+        if (!valid) {
+          setErrorWithCallback('Invalid DWG file: file header is missing or corrupted. The file does not start with a valid DWG signature.');
+          setFileInfo(null);
+          setIsLoading(false);
+          return;
+        }
+        console.log(`[CadViewer] DWG version detected: ${version}, size: ${file.size} bytes`);
+      }
+
       const success = await docManagerRef.current.openDocument(file.name, arrayBuffer, {});
 
       if (success) {
         setFileInfo({ name: file.name, size: file.size });
       } else {
-        setErrorWithCallback('Failed to open the CAD file. The file may be corrupted or in an unsupported format.');
+        console.error('[CadViewer] openDocument returned false for:', file.name);
+        setErrorWithCallback('Failed to open the CAD file. The parser could not process this file format.');
         setFileInfo(null);
       }
       setIsLoading(false);
     } catch (err) {
-      console.error('Failed to load file:', err);
+      console.error('[CadViewer] Failed to load file:', file.name, err);
       const errorMessage = getErrorMessage(err);
       setErrorWithCallback(errorMessage);
       setFileInfo(null);
