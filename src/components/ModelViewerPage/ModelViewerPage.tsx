@@ -63,11 +63,7 @@ export function ModelViewerPage() {
   const [supabaseModelId, setSupabaseModelId] = useState<string | null>(null);
 
   // Load Supabase model + worksets on mount
-  useEffect(() => {
-    loadSupabaseData();
-  }, []);
-
-  const loadSupabaseData = async () => {
+  const loadSupabaseData = useCallback(async () => {
     try {
       // Find the first available model in Supabase
       const models = await supabaseApi.getModels();
@@ -107,7 +103,11 @@ export function ModelViewerPage() {
     } catch (err) {
       console.warn('[Supabase] Failed to connect:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadSupabaseData();
+  }, [loadSupabaseData]);
 
   // ── Viewer callbacks ──────────────────────────────────────────
 
