@@ -25,6 +25,7 @@
     "@mlightcad/data-model": "^1.6.10",
     "@mlightcad/three-renderer": "^1.0.0",
     "@simplepdf/react-embed-pdf": "^1.10.0",
+    "@supabase/supabase-js": "^2.95.3",
     "@univerjs/core": "^0.15.4",
     "@univerjs/design": "^0.15.4",
     "@univerjs/engine-formula": "^0.15.4",

@@ -264,10 +264,10 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
                 }
                 // Apply wireframe
                 const wireMat = new THREE.MeshBasicMaterial({
-                  color: 0x333344,
+                  color: 0x8899bb,
                   wireframe: true,
                   transparent: true,
-                  opacity: 0.15,
+                  opacity: 0.35,
                 });
                 child.material = wireMat;
               }
