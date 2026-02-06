@@ -1,0 +1,243 @@
+.viewpoints {
+  display: flex;
+  flex-direction: column;
+  background-color: #1e293b;
+  color: #f8fafc;
+  border-top: 1px solid #334155;
+}
+
+.viewpoints-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #334155;
+  flex-shrink: 0;
+}
+
+.viewpoints-header h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #f8fafc;
+}
+
+/* Save button */
+.viewpoints-save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  background-color: #646cff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.viewpoints-save-btn:hover:not(:disabled) {
+  background-color: #535bf2;
+}
+
+.viewpoints-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Name input row */
+.viewpoints-name-input-row {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.viewpoints-name-input {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  background-color: #0f172a;
+  border: 1px solid #646cff;
+  border-radius: 4px;
+  color: #f8fafc;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.viewpoints-name-input::placeholder {
+  color: #64748b;
+}
+
+.viewpoints-confirm-btn,
+.viewpoints-cancel-btn {
+  padding: 0.3rem;
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.viewpoints-confirm-btn {
+  color: #4ade80;
+  border-color: #4ade80;
+}
+
+.viewpoints-confirm-btn:hover:not(:disabled) {
+  background-color: rgba(74, 222, 128, 0.15);
+}
+
+.viewpoints-confirm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.viewpoints-cancel-btn {
+  color: #94a3b8;
+}
+
+.viewpoints-cancel-btn:hover:not(:disabled) {
+  background-color: #334155;
+  color: #f8fafc;
+}
+
+/* List */
+.viewpoints-list {
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+.viewpoints-empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: #64748b;
+}
+
+.viewpoints-empty-icon {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 0.5rem;
+  color: #475569;
+  display: block;
+}
+
+.viewpoints-empty p {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.8125rem;
+}
+
+.viewpoints-empty-hint {
+  font-size: 0.6875rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+/* Card */
+.viewpoints-card {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  position: relative;
+}
+
+.viewpoints-card:hover {
+  background-color: #263548;
+}
+
+.viewpoints-card.active {
+  background-color: #1e3a5f;
+  border-left: 3px solid #646cff;
+  padding-left: calc(0.75rem - 3px);
+}
+
+/* Thumbnail */
+.viewpoints-card-thumb {
+  width: 56px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #0f172a;
+  border: 1px solid #334155;
+}
+
+.viewpoints-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.viewpoints-card-no-thumb {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+}
+
+/* Info */
+.viewpoints-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.viewpoints-card-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewpoints-card-meta {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.viewpoints-badge {
+  display: inline-block;
+  padding: 0 0.3rem;
+  background-color: #334155;
+  color: #94a3b8;
+  border-radius: 3px;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+/* Delete button */
+.viewpoints-delete-btn {
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewpoints-delete-btn:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+}
