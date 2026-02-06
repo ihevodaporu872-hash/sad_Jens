@@ -5,147 +5,396 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to the real test PDF file (630 KB)
 const TEST_PDF_PATH = path.resolve(__dirname, '../public/test-files/test.pdf');
+const TEST_XML_MARKUP_PATH = path.resolve(__dirname, '../public/test-files/test-markup.xml');
+const TEST_JSON_MARKUP_PATH = path.resolve(__dirname, '../public/test-files/test-markup.json');
 
-test.describe('PDF Viewer - Upload test.pdf', () => {
+test.describe('PDF Viewer - Basic', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to the PDF page
     await page.goto('/pdf');
     await page.waitForLoadState('domcontentloaded');
-
-    // Wait for the PDF viewer container to appear
-    await page.waitForSelector('.pdf-viewer', { timeout: 30000 });
+    await page.waitForSelector('.pdf-viewer-wrapper', { timeout: 30000 });
   });
 
-  test('should open /pdf page and display viewer', async ({ page }) => {
-    // Verify PDF viewer is visible
+  test('should display viewer with toolbar and empty state', async ({ page }) => {
     const viewer = page.locator('.pdf-viewer');
     await expect(viewer).toBeVisible({ timeout: 15000 });
 
-    // Verify toolbar is visible
     const toolbar = page.locator('.pdf-toolbar');
     await expect(toolbar).toBeVisible();
 
-    // Verify upload button exists
     const uploadBtn = page.locator('.pdf-upload-btn');
     await expect(uploadBtn).toBeVisible();
+    await expect(uploadBtn).toHaveText('Upload PDF');
 
-    // Screenshot of initial state
+    // Load Markup button should exist but be disabled (no PDF loaded)
+    const markupBtn = page.locator('.pdf-markup-btn');
+    await expect(markupBtn).toBeVisible();
+    await expect(markupBtn).toBeDisabled();
+
+    // Empty state message
+    await expect(page.locator('text=Drop PDF + markup files here')).toBeVisible();
+    await expect(page.locator('text=Supports XML and JSON')).toBeVisible();
+
     await page.screenshot({
       path: 'e2e/screenshots/pdf-viewer-initial.png',
-      fullPage: true
+      fullPage: true,
     });
   });
 
-  test('should have SimplePDF iframe loaded', async ({ page }) => {
-    // Wait for SimplePDF iframe to be ready
-    const iframe = page.locator('iframe[title="SimplePDF"]');
-    await expect(iframe).toBeVisible({ timeout: 20000 });
+  test('should load test PDF via button and render pages', async ({ page }) => {
+    const loadTestBtn = page.locator('[data-testid="load-test-pdf"]');
+    await expect(loadTestBtn).toBeVisible();
+    await loadTestBtn.click();
 
-    // Verify iframe has SimplePDF source
-    const src = await iframe.getAttribute('src');
-    expect(src).toContain('simplepdf.com');
+    // Wait for PDF to render — canvas elements should appear
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30000 });
 
-    // Wait for iframe to fully load
-    await page.waitForTimeout(5000);
+    // Verify at least one page rendered
+    const pages = page.locator('.pdf-page');
+    const pageCount = await pages.count();
+    expect(pageCount).toBeGreaterThan(0);
 
-    // Take screenshot
+    // Verify document info appeared
+    const pageInfo = page.locator('.pdf-page-info');
+    await expect(pageInfo).toBeVisible();
+
+    // Verify markup button is now enabled
+    const markupBtn = page.locator('.pdf-markup-btn');
+    await expect(markupBtn).toBeEnabled();
+
     await page.screenshot({
-      path: 'e2e/screenshots/pdf-simplepdf-iframe.png',
-      fullPage: true
+      path: 'e2e/screenshots/pdf-test-file-loaded.png',
+      fullPage: true,
     });
   });
 
-  test('should load test.pdf via file input', async ({ page }) => {
-    // Wait for SimplePDF iframe to appear
-    const iframe = page.locator('iframe[title="SimplePDF"]');
-    await expect(iframe).toBeVisible({ timeout: 20000 });
-
-    // Get file input element
-    const fileInput = page.locator('input[type="file"]');
-    await expect(fileInput).toBeAttached();
-
-    // Upload the test.pdf file
-    await fileInput.setInputFiles(TEST_PDF_PATH);
-
-    // Wait for processing
-    await page.waitForTimeout(5000);
-
-    // Take screenshot after file selection
-    await page.screenshot({
-      path: 'e2e/screenshots/pdf-test-file-selected.png',
-      fullPage: true
-    });
-
-    // Verify iframe is still visible
-    await expect(iframe).toBeVisible();
-  });
-
-  test('iframe should be properly sized for PDF display', async ({ page }) => {
-    // Wait for iframe
-    const iframe = page.locator('iframe[title="SimplePDF"]');
-    await expect(iframe).toBeVisible({ timeout: 20000 });
-
-    // Check PDF container has proper dimensions
-    const container = page.locator('.pdf-container');
-    const box = await container.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThan(300);
-    expect(box!.height).toBeGreaterThan(200);
-
-    // Check iframe dimensions
-    const iframeBox = await iframe.boundingBox();
-    expect(iframeBox).not.toBeNull();
-    expect(iframeBox!.width).toBeGreaterThan(100);
-    expect(iframeBox!.height).toBeGreaterThan(100);
-
-    // Screenshot showing sized iframe
-    await page.screenshot({
-      path: 'e2e/screenshots/pdf-iframe-sized.png',
-      fullPage: true
-    });
-  });
-
-  test('complete workflow: open page, load test.pdf, verify iframe, screenshot', async ({ page }) => {
-    console.log('Starting PDF viewer complete workflow test...');
-
-    // Step 1: Verify page loads with PDF viewer
-    const viewer = page.locator('.pdf-viewer');
-    await expect(viewer).toBeVisible({ timeout: 15000 });
-    console.log('Step 1: PDF viewer container visible');
-
-    // Step 2: Verify SimplePDF iframe is present
-    const iframe = page.locator('iframe[title="SimplePDF"]');
-    await expect(iframe).toBeVisible({ timeout: 20000 });
-    console.log('Step 2: SimplePDF iframe visible');
-
-    // Step 3: Verify iframe has SimplePDF source
-    const iframeSrc = await iframe.getAttribute('src');
-    expect(iframeSrc).toContain('simplepdf.com');
-    console.log('Step 3: Iframe source verified (simplepdf.com)');
-
-    // Step 4: Upload test.pdf file
-    const fileInput = page.locator('input[type="file"]');
+  test('should load test PDF via file input', async ({ page }) => {
+    // Use the hidden file input for PDF
+    const fileInput = page.locator('input[type="file"][accept*=".pdf"]');
     await expect(fileInput).toBeAttached();
     await fileInput.setInputFiles(TEST_PDF_PATH);
-    console.log('Step 4: test.pdf file uploaded');
 
-    // Step 5: Wait for PDF processing
-    await page.waitForTimeout(5000);
-    console.log('Step 5: Waited for PDF processing');
+    // Wait for canvas
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30000 });
 
-    // Step 6: Verify iframe is still displaying (PDF is in iframe)
-    await expect(iframe).toBeVisible();
-    console.log('Step 6: Iframe still visible after PDF load');
+    const pages = page.locator('.pdf-page');
+    expect(await pages.count()).toBeGreaterThan(0);
 
-    // Step 7: Take final screenshot
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-file-input-loaded.png',
+      fullPage: true,
+    });
+  });
+});
+
+test.describe('PDF Viewer - Zoom & Navigation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/pdf');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('.pdf-viewer-wrapper', { timeout: 30000 });
+
+    // Load test PDF
+    const loadTestBtn = page.locator('[data-testid="load-test-pdf"]');
+    await loadTestBtn.click();
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30000 });
+  });
+
+  test('should zoom in and out', async ({ page }) => {
+    // Get initial scale text
+    const scaleText = page.locator('text=150%');
+    await expect(scaleText).toBeVisible();
+
+    // Zoom in
+    const zoomInBtn = page.locator('.pdf-btn', { hasText: '+' });
+    await zoomInBtn.click();
+    await page.waitForTimeout(1000);
+    await expect(page.locator('text=175%')).toBeVisible();
+
+    // Zoom out
+    const zoomOutBtn = page.locator('.pdf-btn', { hasText: '-' });
+    await zoomOutBtn.click();
+    await page.waitForTimeout(1000);
+    await expect(page.locator('text=150%')).toBeVisible();
+  });
+});
+
+test.describe('PDF Viewer - XML Markup Overlay', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/pdf');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('.pdf-viewer-wrapper', { timeout: 30000 });
+
+    // Load test PDF first
+    const loadTestBtn = page.locator('[data-testid="load-test-pdf"]');
+    await loadTestBtn.click();
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30000 });
+  });
+
+  test('should load XML markup and show sidebar', async ({ page }) => {
+    // Upload XML markup
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await expect(markupInput).toBeAttached();
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    // Sidebar should appear
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+    const sidebar = page.locator('.annotation-sidebar');
+    await expect(sidebar).toBeVisible();
+
+    // Should show "Markup Layers" header
+    await expect(page.locator('.annotation-sidebar-header h3')).toHaveText('Markup Layers');
+
+    // Markup filename should appear in toolbar
+    await expect(page.locator('.markup-file-badge')).toContainText('test-markup.xml');
+
+    // Layers button should appear
+    const layersBtn = page.locator('.pdf-btn', { hasText: 'Layers' });
+    await expect(layersBtn).toBeVisible();
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-xml-markup-loaded.png',
+      fullPage: true,
+    });
+  });
+
+  test('should render annotation SVG overlays on PDF pages', async ({ page }) => {
+    // Upload XML markup
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    // Wait for sidebar and overlay
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // SVG overlay should appear
+    const overlays = page.locator('.pdf-annotation-overlay');
+    // Give it a moment to render
+    await page.waitForTimeout(1000);
+
+    // Check that stat badges show counts
+    const sidebar = page.locator('.annotation-sidebar');
+    await expect(sidebar).toBeVisible();
+
+    // Should have layer controls
+    const layerControls = page.locator('.layer-control');
+    expect(await layerControls.count()).toBeGreaterThan(0);
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-xml-overlay-rendered.png',
+      fullPage: true,
+    });
+  });
+
+  test('should toggle layer visibility', async ({ page }) => {
+    // Upload XML markup
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Find first layer checkbox
+    const checkbox = page.locator('.layer-visibility input[type="checkbox"]').first();
+    await expect(checkbox).toBeChecked();
+
+    // Uncheck to hide layer
+    await checkbox.uncheck();
+    await expect(checkbox).not.toBeChecked();
+
+    // Layer should get hidden class
+    const layerControl = page.locator('.layer-control').first();
+    await expect(layerControl).toHaveClass(/layer-hidden/);
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-layer-hidden.png',
+      fullPage: true,
+    });
+
+    // Re-check to show layer
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+    await expect(layerControl).not.toHaveClass(/layer-hidden/);
+  });
+
+  test('should change layer color', async ({ page }) => {
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Color picker should exist
+    const colorPicker = page.locator('.layer-color-picker').first();
+    await expect(colorPicker).toBeVisible();
+
+    // Change color
+    await colorPicker.evaluate((el: HTMLInputElement) => {
+      el.value = '#ff00ff';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-color-changed.png',
+      fullPage: true,
+    });
+  });
+
+  test('should change layer opacity', async ({ page }) => {
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Opacity slider should exist
+    const slider = page.locator('.layer-opacity-slider').first();
+    await expect(slider).toBeVisible();
+
+    // Change opacity
+    await slider.fill('0.3');
+
+    // Opacity value should update
+    const opacityValue = page.locator('.layer-opacity-value').first();
+    await expect(opacityValue).toHaveText('30%');
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-opacity-changed.png',
+      fullPage: true,
+    });
+  });
+
+  test('should select item from sidebar list', async ({ page }) => {
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Click on first item in layer
+    const itemRow = page.locator('.layer-item-row').first();
+    await expect(itemRow).toBeVisible();
+    await itemRow.click();
+
+    // Should be selected
+    await expect(itemRow).toHaveClass(/selected/);
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-item-selected.png',
+      fullPage: true,
+    });
+  });
+
+  test('should close sidebar', async ({ page }) => {
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Close sidebar
+    const closeBtn = page.locator('.annotation-sidebar-close');
+    await closeBtn.click();
+
+    // Sidebar should disappear
+    await expect(page.locator('.annotation-sidebar')).not.toBeVisible();
+
+    // Layers button should toggle it back
+    const layersBtn = page.locator('.pdf-btn', { hasText: 'Layers' });
+    await layersBtn.click();
+    await expect(page.locator('.annotation-sidebar')).toBeVisible();
+  });
+});
+
+test.describe('PDF Viewer - JSON Markup Overlay', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/pdf');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForSelector('.pdf-viewer-wrapper', { timeout: 30000 });
+
+    const loadTestBtn = page.locator('[data-testid="load-test-pdf"]');
+    await loadTestBtn.click();
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30000 });
+  });
+
+  test('should load JSON markup and show sidebar', async ({ page }) => {
+    const markupInput = page.locator('input[type="file"][accept*=".json"]');
+    await expect(markupInput).toBeAttached();
+    await markupInput.setInputFiles(TEST_JSON_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    await expect(page.locator('.annotation-sidebar-header h3')).toHaveText('Markup Layers');
+    await expect(page.locator('.markup-file-badge')).toContainText('test-markup.json');
+
+    // Should have 2 layers (Measurements + Areas)
+    const layerControls = page.locator('.layer-control');
+    expect(await layerControls.count()).toBe(2);
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-json-markup-loaded.png',
+      fullPage: true,
+    });
+  });
+
+  test('JSON and XML produce same UI structure', async ({ page }) => {
+    // Load JSON markup
+    const markupInput = page.locator('input[type="file"][accept*=".json"]');
+    await markupInput.setInputFiles(TEST_JSON_MARKUP_PATH);
+
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Verify same structural elements exist
+    await expect(page.locator('.annotation-sidebar')).toBeVisible();
+    await expect(page.locator('.layer-control').first()).toBeVisible();
+    await expect(page.locator('.layer-visibility').first()).toBeVisible();
+    await expect(page.locator('.layer-color-picker').first()).toBeVisible();
+    await expect(page.locator('.layer-opacity-slider').first()).toBeVisible();
+    await expect(page.locator('.layer-item-row').first()).toBeVisible();
+
+    await page.screenshot({
+      path: 'e2e/screenshots/pdf-json-overlay-rendered.png',
+      fullPage: true,
+    });
+  });
+});
+
+test.describe('PDF Viewer - Complete Workflow', () => {
+  test('full workflow: load PDF, load XML markup, interact, screenshot', async ({ page }) => {
+    await page.goto('/pdf');
+    await page.waitForSelector('.pdf-viewer-wrapper', { timeout: 30000 });
+
+    // Step 1: Load PDF
+    const loadTestBtn = page.locator('[data-testid="load-test-pdf"]');
+    await loadTestBtn.click();
+    await page.waitForSelector('.pdf-page canvas', { timeout: 30000 });
+
+    // Step 2: Load XML markup
+    const markupInput = page.locator('input[type="file"][accept*=".xml"]');
+    await markupInput.setInputFiles(TEST_XML_MARKUP_PATH);
+    await page.waitForSelector('.annotation-sidebar', { timeout: 10000 });
+
+    // Step 3: Verify layers are visible
+    const layerControls = page.locator('.layer-control');
+    expect(await layerControls.count()).toBeGreaterThan(0);
+
+    // Step 4: Click an item
+    const firstItem = page.locator('.layer-item-row').first();
+    await firstItem.click();
+    await expect(firstItem).toHaveClass(/selected/);
+
+    // Step 5: Change color on a layer
+    const colorPicker = page.locator('.layer-color-picker').first();
+    await colorPicker.evaluate((el: HTMLInputElement) => {
+      el.value = '#00ffff';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    // Step 6: Toggle a layer off and on
+    const checkbox = page.locator('.layer-visibility input[type="checkbox"]').first();
+    await checkbox.uncheck();
+    await page.waitForTimeout(300);
+    await checkbox.check();
+
+    // Step 7: Final screenshot
     await page.screenshot({
       path: 'e2e/screenshots/pdf-workflow-complete.png',
-      fullPage: true
+      fullPage: true,
     });
-    console.log('Step 7: Screenshot saved to e2e/screenshots/pdf-workflow-complete.png');
-
-    console.log('PDF viewer complete workflow test PASSED!');
   });
 });
