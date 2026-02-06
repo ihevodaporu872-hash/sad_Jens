@@ -1,0 +1,222 @@
+/* ── MeasureTools floating panel ─────────────────────────── */
+
+.measure-tools {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background-color: #0f172aee;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.5rem;
+  min-width: 340px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+/* ── Toolbar ────────────────────────────────────────────── */
+
+.measure-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.measure-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.5rem;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.measure-btn:hover {
+  background-color: #334155;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+.measure-btn svg {
+  flex-shrink: 0;
+}
+
+.measure-btn-active {
+  background-color: #646cff;
+  border-color: #818cf8;
+  color: #f8fafc;
+}
+
+.measure-btn-active:hover {
+  background-color: #5558e6;
+  border-color: #a5b4fc;
+}
+
+.measure-btn-close {
+  margin-left: auto;
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.measure-btn-close:hover {
+  background-color: #7f1d1d;
+  border-color: #f87171;
+  color: #fef2f2;
+}
+
+.measure-separator {
+  width: 1px;
+  height: 20px;
+  background-color: #334155;
+  margin: 0 0.125rem;
+}
+
+/* ── Status text ────────────────────────────────────────── */
+
+.measure-status {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  color: #94a3b8;
+  background-color: #1e293b;
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* ── Measurements list ──────────────────────────────────── */
+
+.measure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.measure-list-header {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.125rem 0.375rem;
+}
+
+.measure-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  background-color: #1e293b;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: #e2e8f0;
+}
+
+.measure-list-item:hover {
+  background-color: #293548;
+}
+
+.measure-list-icon {
+  font-size: 0.875rem;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.measure-list-icon-distance {
+  color: #00ff88;
+}
+
+.measure-list-icon-area {
+  color: #44aaff;
+}
+
+.measure-list-icon-angle {
+  color: #ffaa00;
+}
+
+.measure-list-value {
+  flex: 1;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.6875rem;
+}
+
+.measure-list-remove {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.125rem;
+  transition: color 0.15s;
+}
+
+.measure-list-remove:hover {
+  color: #ef4444;
+}
+
+/* ── CSS2D labels (rendered in Three.js overlay) ─────── */
+
+.measure-label {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.measure-label-distance {
+  background-color: rgba(0, 255, 136, 0.2);
+  border: 1px solid rgba(0, 255, 136, 0.5);
+  color: #00ff88;
+}
+
+.measure-label-area {
+  background-color: rgba(68, 170, 255, 0.2);
+  border: 1px solid rgba(68, 170, 255, 0.5);
+  color: #44aaff;
+}
+
+.measure-label-angle {
+  background-color: rgba(255, 170, 0, 0.2);
+  border: 1px solid rgba(255, 170, 0, 0.5);
+  color: #ffaa00;
+}
+
+/* ── CSS2D overlay container ─────────────────────────── */
+
+.measure-css2d-overlay {
+  pointer-events: none;
+}
+
+/* ── Scrollbar styling ───────────────────────────────── */
+
+.measure-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.measure-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.measure-list::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 2px;
+}
