@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { TabNavigation } from './components/Layout/TabNavigation';
-import { IfcViewer } from './components/IfcViewer';
+import { ModelViewerPage } from './components/ModelViewerPage';
 import { CadViewer } from './components/CadViewer';
 import { PdfViewer } from './components/PdfViewer/PdfViewer';
 import { ExcelViewer } from './components/ExcelViewer/ExcelViewer';
@@ -15,7 +15,7 @@ function App() {
         <div className="main-content">
           <Routes>
             <Route path="/" element={<Navigate to="/ifc" replace />} />
-            <Route path="/ifc" element={<IfcViewer />} />
+            <Route path="/ifc" element={<ModelViewerPage />} />
             <Route path="/cad" element={<CadViewer />} />
             <Route path="/pdf" element={<PdfViewer />} />
             <Route path="/excel" element={<ExcelViewer />} />
