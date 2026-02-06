@@ -9,19 +9,9 @@ import type { IfcElementInfo, IfcPropertySet, IfcProperty, IfcKeyParams, Element
 
 // IFC type constants from web-ifc
 const IFCRELDEFINESBYPROPERTIES = 4186316022;
-const IFCPROPERTYSET = 1451395588;
-const IFCPROPERTYSINGLEVALUE = 3972844353;
-const IFCRELMATERIALSINGLE = 3268803585;
 const IFCRELASSOCIATESMATERIAL = 2655215786;
 const IFCRELASSOCIATESCLASSIFICATION = 919958153;
-const IFCMATERIAL = 1838606355;
-const IFCMATERIALLAYERSETUSAGE = 1303795690;
-const IFCMATERIALLAYERSET = 3303938423;
-const IFCMATERIALLAYER = 248100487;
 const IFCRELCONTAINEDINSPATIALSTRUCTURE = 3242617779;
-const IFCBUILDINGSTOREY = 3124254112;
-const IFCRELAGGREGATES = 160246688;
-const IFCELEMENTQUANTITY = 1883228015;
 
 // Property name patterns for key params extraction
 const VOLUME_NAMES = ['netvolume', 'grossvolume', 'volume', 'объем', 'объём'];
@@ -288,7 +278,110 @@ export function getElementProperties(
       // ignore classification errors
     }
 
-    // ── Extract key parameters from property sets ──
+    // ── Extract quantity sets (IfcElementQuantity) ──
+    try {
+      const relIds = api.GetLineIDsWithType(modelId, IFCRELDEFINESBYPROPERTIES);
+      const relCount = relIds.size();
+
+      for (let i = 0; i < relCount; i++) {
+        const relId = relIds.get(i);
+        try {
+          const rel = api.GetLine(modelId, relId, false);
+          if (!rel) continue;
+
+          const relatedObjects = rel.RelatedObjects as
+            | { value: number }[]
+            | number[]
+            | undefined;
+          if (!relatedObjects) continue;
+
+          let found = false;
+          if (Array.isArray(relatedObjects)) {
+            for (const obj of relatedObjects) {
+              const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
+              if (objId === expressId) {
+                found = true;
+                break;
+              }
+            }
+          }
+          if (!found) continue;
+
+          const propDefRef = rel.RelatingPropertyDefinition;
+          const propDefId =
+            typeof propDefRef === 'object' && propDefRef !== null
+              ? (propDefRef as { value: number }).value
+              : (propDefRef as number);
+
+          if (!propDefId) continue;
+
+          try {
+            const propDef = api.GetLine(modelId, propDefId, false);
+            if (!propDef) continue;
+
+            // Check if this is an IfcElementQuantity (has Quantities instead of HasProperties)
+            const quantities = propDef.Quantities as
+              | { value: number }[]
+              | number[]
+              | undefined;
+
+            if (quantities && Array.isArray(quantities)) {
+              const qtoName = safeStr(propDef.Name) || 'QuantitySet';
+              const qtoProperties: IfcProperty[] = [];
+
+              // Check if this pset was already added as a property set (avoid duplicates)
+              const alreadyAdded = propertySets.some((ps) => ps.name === qtoName);
+              if (alreadyAdded) continue;
+
+              for (const qRef of quantities) {
+                const qId =
+                  typeof qRef === 'object' && qRef !== null
+                    ? (qRef as { value: number }).value
+                    : (qRef as number);
+
+                try {
+                  const q = api.GetLine(modelId, qId, false);
+                  if (!q) continue;
+
+                  const qName = safeStr(q.Name);
+                  // IfcQuantityLength/Area/Volume/Count/Weight all have value fields
+                  let qValue: string | number | boolean | null = null;
+                  for (const field of ['LengthValue', 'AreaValue', 'VolumeValue', 'CountValue', 'WeightValue', 'TimeValue']) {
+                    if (q[field] !== undefined && q[field] !== null) {
+                      const v = q[field];
+                      if (typeof v === 'object' && v !== null && 'value' in (v as Record<string, unknown>)) {
+                        qValue = (v as Record<string, unknown>).value as string | number | boolean;
+                      } else {
+                        qValue = v as string | number | boolean;
+                      }
+                      break;
+                    }
+                  }
+
+                  if (qName) {
+                    qtoProperties.push({ name: qName, value: qValue });
+                  }
+                } catch {
+                  // skip individual quantity
+                }
+              }
+
+              if (qtoProperties.length > 0) {
+                propertySets.push({ name: qtoName, properties: qtoProperties });
+              }
+            }
+          } catch {
+            // skip
+          }
+        } catch {
+          // skip
+        }
+      }
+    } catch {
+      // ignore quantity set errors
+    }
+
+    // ── Extract key parameters from property sets (including quantity sets) ──
     const keyParams: IfcKeyParams = {};
 
     for (const pset of propertySets) {

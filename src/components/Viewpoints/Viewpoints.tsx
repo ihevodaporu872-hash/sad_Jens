@@ -2,16 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import type { IfcViewerRef } from '../../types/ifc';
 import type { Viewpoint, ViewpointData } from '../../types/ifc';
+import type { AnnotationsRef } from '../Annotations/Annotations';
 import * as supabaseApi from '../../services/supabaseService';
 import './Viewpoints.css';
 
 interface ViewpointsProps {
   viewerRef: React.RefObject<IfcViewerRef | null>;
   supabaseModelId: string | null;
+  annotationsRef?: React.RefObject<AnnotationsRef | null>;
   className?: string;
 }
 
-export function Viewpoints({ viewerRef, supabaseModelId, className }: ViewpointsProps) {
+export function Viewpoints({ viewerRef, supabaseModelId, annotationsRef, className }: ViewpointsProps) {
   const [viewpoints, setViewpoints] = useState<Viewpoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,14 +112,18 @@ export function Viewpoints({ viewerRef, supabaseModelId, className }: Viewpoints
       const thumbnail = captureThumbnail();
       const clippingPlanes = readClippingPlanes();
 
+      // Capture current annotations if available
+      const currentAnnotations = annotationsRef?.current?.getAnnotations() ?? [];
+
       const input: ViewpointData = {
         name: newName.trim(),
         cameraPosition: cameraState.position,
         cameraTarget: cameraState.target,
-        hiddenExpressIds: [],  // Could be extended to track hidden elements
-        coloredElements: [],   // Could be extended to track colored elements
+        hiddenExpressIds: [],
+        coloredElements: [],
         clippingPlanes,
         thumbnail,
+        annotations: currentAnnotations.length > 0 ? currentAnnotations : undefined,
       };
 
       const created = await supabaseApi.createViewpoint(supabaseModelId, input);
@@ -129,7 +135,7 @@ export function Viewpoints({ viewerRef, supabaseModelId, className }: Viewpoints
     } finally {
       setSaving(false);
     }
-  }, [supabaseModelId, newName, readCameraState, captureThumbnail, readClippingPlanes]);
+  }, [supabaseModelId, newName, readCameraState, captureThumbnail, readClippingPlanes, annotationsRef]);
 
   // ── Restore a viewpoint ────────────────────────────────────────
   const handleRestore = useCallback(
@@ -190,8 +196,17 @@ export function Viewpoints({ viewerRef, supabaseModelId, className }: Viewpoints
           renderer.localClippingEnabled = false;
         }
       }
+
+      // 5. Restore annotations
+      if (annotationsRef?.current) {
+        if (vp.annotations && vp.annotations.length > 0) {
+          annotationsRef.current.setAnnotations(vp.annotations);
+        } else {
+          annotationsRef.current.clearAnnotations();
+        }
+      }
     },
-    [viewerRef]
+    [viewerRef, annotationsRef]
   );
 
   // ── Delete a viewpoint ─────────────────────────────────────────
@@ -337,6 +352,9 @@ export function Viewpoints({ viewerRef, supabaseModelId, className }: Viewpoints
                 )}
                 {vp.coloredElements.length > 0 && (
                   <span className="viewpoints-badge" title="Has colored elements">color</span>
+                )}
+                {vp.annotations && vp.annotations.length > 0 && (
+                  <span className="viewpoints-badge" title="Has annotations">ann</span>
                 )}
               </span>
             </div>

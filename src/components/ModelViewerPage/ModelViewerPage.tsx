@@ -7,12 +7,13 @@ import { Quantification } from '../Quantification';
 import { SelectionTree } from '../SelectionTree';
 import { ElementActions } from '../ElementActions';
 import { Annotations } from '../Annotations';
+import type { AnnotationsRef } from '../Annotations/Annotations';
 import { MeasureTools } from '../MeasureTools';
 import { AppearanceProfiler } from '../AppearanceProfiler';
 import { SearchSets } from '../SearchSets';
 import { SectionPlanes } from '../SectionPlanes';
 import { Viewpoints } from '../Viewpoints';
-import { getElementProperties } from '../../utils/ifcProperties';
+import { getElementProperties, buildElementIndex } from '../../utils/ifcProperties';
 import * as supabaseApi from '../../services/supabaseService';
 import type {
   IfcViewerRef,
@@ -28,6 +29,7 @@ type LeftTab = 'worksets' | 'filter' | 'quantification' | 'tree' | 'profiler' | 
 
 export function ModelViewerPage() {
   const viewerRef = useRef<IfcViewerRef>(null);
+  const annotationsRef = useRef<AnnotationsRef>(null);
 
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
@@ -150,17 +152,33 @@ export function ModelViewerPage() {
     []
   );
 
-  // Detect model load — poll for model availability
+  // Detect model load — poll for model availability, build index as fallback
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       const allIds = viewerRef.current?.getAllExpressIds() ?? [];
       if (allIds.length > 0 && !hasModel) {
         setHasModel(true);
         clearInterval(interval);
+
+        // Build element index from web-ifc as fallback when Supabase has no data
+        if (elementIndex.length === 0) {
+          const ifcApi = viewerRef.current?.getIfcApi();
+          const modelId = viewerRef.current?.getModelId();
+          if (ifcApi && modelId !== null && modelId !== undefined) {
+            console.log('[Client] Building element index from web-ifc...');
+            try {
+              const index = await buildElementIndex(ifcApi, modelId, allIds);
+              setElementIndex(index);
+              console.log(`[Client] Built element index: ${index.length} entries`);
+            } catch (err) {
+              console.warn('[Client] Failed to build element index:', err);
+            }
+          }
+        }
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [hasModel]);
+  }, [hasModel, elementIndex.length]);
 
   // ── Element Actions ──────────────────────────────────────────
 
@@ -272,84 +290,119 @@ export function ModelViewerPage() {
 
   // ── Workset handlers ──────────────────────────────────────────
 
+  // Local workset ID counter for offline mode
+  const localWorksetIdRef = useRef(0);
+
   const handleCreateWorkset = useCallback(async () => {
     const ids = viewerRef.current?.getSelectedExpressIds() ?? [];
-    if (ids.length === 0 || !supabaseModelId) return;
+    if (ids.length === 0) return;
 
-    try {
-      const ws = await supabaseApi.createWorkset(supabaseModelId, {
-        name: `Workset ${worksets.length + 1}`,
-        color: '#FF8800',
-        opacity: 0.5,
-        expressIds: ids,
-      });
-      setWorksets((prev) => [...prev, ws]);
-    } catch (err) {
-      console.error('[Worksets] Failed to create:', err);
+    if (supabaseModelId) {
+      try {
+        const ws = await supabaseApi.createWorkset(supabaseModelId, {
+          name: `Workset ${worksets.length + 1}`,
+          color: '#FF8800',
+          opacity: 0.5,
+          expressIds: ids,
+        });
+        setWorksets((prev) => [...prev, ws]);
+        return;
+      } catch (err) {
+        console.warn('[Worksets] Supabase failed, using local fallback:', err);
+      }
     }
+
+    // Local fallback
+    const localId = `local_ws_${++localWorksetIdRef.current}`;
+    const ws: Workset = {
+      id: localId,
+      modelId: 'local',
+      name: `Workset ${worksets.length + 1}`,
+      color: '#FF8800',
+      opacity: 0.5,
+      elementIds: { expressIds: ids, globalIds: [] },
+    };
+    setWorksets((prev) => [...prev, ws]);
   }, [worksets.length, supabaseModelId]);
 
   const handleDeleteWorkset = useCallback(async (worksetId: string) => {
-    try {
-      await supabaseApi.deleteWorkset(worksetId);
-      setWorksets((prev) => prev.filter((w) => w.id !== worksetId));
-      viewerRef.current?.clearHighlight(worksetId);
-      if (selectedWorksetId === worksetId) {
-        viewerRef.current?.clearOthersWireframe();
-        setSelectedWorksetId(null);
+    if (supabaseModelId && !worksetId.startsWith('local_')) {
+      try {
+        await supabaseApi.deleteWorkset(worksetId);
+      } catch (err) {
+        console.warn('[Worksets] Failed to delete from Supabase:', err);
       }
-    } catch (err) {
-      console.error('[Worksets] Failed to delete:', err);
     }
-  }, [selectedWorksetId]);
+    setWorksets((prev) => prev.filter((w) => w.id !== worksetId));
+    viewerRef.current?.clearHighlight(worksetId);
+    if (selectedWorksetId === worksetId) {
+      viewerRef.current?.clearOthersWireframe();
+      setSelectedWorksetId(null);
+    }
+  }, [selectedWorksetId, supabaseModelId]);
 
   const handleRenameWorkset = useCallback(async (worksetId: string, newName: string) => {
-    try {
-      const updated = await supabaseApi.updateWorkset(worksetId, { name: newName });
-      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
-    } catch (err) {
-      console.error('[Worksets] Failed to rename:', err);
+    if (supabaseModelId && !worksetId.startsWith('local_')) {
+      try {
+        const updated = await supabaseApi.updateWorkset(worksetId, { name: newName });
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
+        return;
+      } catch (err) {
+        console.warn('[Worksets] Supabase rename failed, updating locally:', err);
+      }
     }
-  }, []);
+    // Local fallback
+    setWorksets((prev) => prev.map((w) => (w.id === worksetId ? { ...w, name: newName } : w)));
+  }, [supabaseModelId]);
 
   const handleColorChange = useCallback(async (worksetId: string, color: string) => {
-    try {
-      const updated = await supabaseApi.updateWorkset(worksetId, { color });
-      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
-
-      // If this workset is currently highlighted, re-apply with new color
-      if (selectedWorksetId === worksetId) {
-        const ws = worksets.find((w) => w.id === worksetId);
-        if (ws) {
-          viewerRef.current?.clearHighlight(worksetId);
-          viewerRef.current?.clearOthersWireframe();
-          viewerRef.current?.highlightElements(worksetId, ws.elementIds.expressIds, color, ws.opacity);
-          viewerRef.current?.setOthersWireframe(ws.elementIds.expressIds);
-        }
+    if (supabaseModelId && !worksetId.startsWith('local_')) {
+      try {
+        const updated = await supabaseApi.updateWorkset(worksetId, { color });
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
+      } catch (err) {
+        console.warn('[Worksets] Supabase color update failed, updating locally:', err);
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? { ...w, color } : w)));
       }
-    } catch (err) {
-      console.error('[Worksets] Failed to update color:', err);
+    } else {
+      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? { ...w, color } : w)));
     }
-  }, [selectedWorksetId, worksets]);
+
+    // If this workset is currently highlighted, re-apply with new color
+    if (selectedWorksetId === worksetId) {
+      const ws = worksets.find((w) => w.id === worksetId);
+      if (ws) {
+        viewerRef.current?.clearHighlight(worksetId);
+        viewerRef.current?.clearOthersWireframe();
+        viewerRef.current?.highlightElements(worksetId, ws.elementIds.expressIds, color, ws.opacity);
+        viewerRef.current?.setOthersWireframe(ws.elementIds.expressIds);
+      }
+    }
+  }, [selectedWorksetId, worksets, supabaseModelId]);
 
   const handleOpacityChange = useCallback(async (worksetId: string, opacity: number) => {
-    try {
-      const updated = await supabaseApi.updateWorkset(worksetId, { opacity });
-      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
-
-      if (selectedWorksetId === worksetId) {
-        const ws = worksets.find((w) => w.id === worksetId);
-        if (ws) {
-          viewerRef.current?.clearHighlight(worksetId);
-          viewerRef.current?.clearOthersWireframe();
-          viewerRef.current?.highlightElements(worksetId, ws.elementIds.expressIds, ws.color, opacity);
-          viewerRef.current?.setOthersWireframe(ws.elementIds.expressIds);
-        }
+    if (supabaseModelId && !worksetId.startsWith('local_')) {
+      try {
+        const updated = await supabaseApi.updateWorkset(worksetId, { opacity });
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
+      } catch (err) {
+        console.warn('[Worksets] Supabase opacity update failed, updating locally:', err);
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? { ...w, opacity } : w)));
       }
-    } catch (err) {
-      console.error('[Worksets] Failed to update opacity:', err);
+    } else {
+      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? { ...w, opacity } : w)));
     }
-  }, [selectedWorksetId, worksets]);
+
+    if (selectedWorksetId === worksetId) {
+      const ws = worksets.find((w) => w.id === worksetId);
+      if (ws) {
+        viewerRef.current?.clearHighlight(worksetId);
+        viewerRef.current?.clearOthersWireframe();
+        viewerRef.current?.highlightElements(worksetId, ws.elementIds.expressIds, ws.color, opacity);
+        viewerRef.current?.setOthersWireframe(ws.elementIds.expressIds);
+      }
+    }
+  }, [selectedWorksetId, worksets, supabaseModelId]);
 
   const handleWorksetClick = useCallback((workset: Workset) => {
     // Clear previous workset highlight and wireframe
@@ -383,15 +436,21 @@ export function ModelViewerPage() {
     if (!ws) return;
 
     const merged = Array.from(new Set([...ws.elementIds.expressIds, ...ids]));
-    try {
-      const updated = await supabaseApi.updateWorkset(worksetId, {
-        expressIds: merged,
-      });
-      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
-    } catch (err) {
-      console.error('[Worksets] Failed to add elements:', err);
+
+    if (supabaseModelId && !worksetId.startsWith('local_')) {
+      try {
+        const updated = await supabaseApi.updateWorkset(worksetId, { expressIds: merged });
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
+        return;
+      } catch (err) {
+        console.warn('[Worksets] Supabase add failed, updating locally:', err);
+      }
     }
-  }, [worksets]);
+    // Local fallback
+    setWorksets((prev) => prev.map((w) =>
+      w.id === worksetId ? { ...w, elementIds: { ...w.elementIds, expressIds: merged } } : w
+    ));
+  }, [worksets, supabaseModelId]);
 
   const handleRemoveElementsFromWorkset = useCallback(async (worksetId: string) => {
     const ids = viewerRef.current?.getSelectedExpressIds() ?? [];
@@ -402,21 +461,29 @@ export function ModelViewerPage() {
 
     const removeSet = new Set(ids);
     const remaining = ws.elementIds.expressIds.filter((eid) => !removeSet.has(eid));
-    try {
-      const updated = await supabaseApi.updateWorkset(worksetId, {
-        expressIds: remaining,
-      });
-      setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
 
-      // Re-apply highlight if active
-      if (selectedWorksetId === worksetId) {
-        viewerRef.current?.clearHighlight(worksetId);
-        viewerRef.current?.highlightElements(worksetId, remaining, ws.color, ws.opacity);
+    if (supabaseModelId && !worksetId.startsWith('local_')) {
+      try {
+        const updated = await supabaseApi.updateWorkset(worksetId, { expressIds: remaining });
+        setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
+      } catch (err) {
+        console.warn('[Worksets] Supabase remove failed, updating locally:', err);
+        setWorksets((prev) => prev.map((w) =>
+          w.id === worksetId ? { ...w, elementIds: { ...w.elementIds, expressIds: remaining } } : w
+        ));
       }
-    } catch (err) {
-      console.error('[Worksets] Failed to remove elements:', err);
+    } else {
+      setWorksets((prev) => prev.map((w) =>
+        w.id === worksetId ? { ...w, elementIds: { ...w.elementIds, expressIds: remaining } } : w
+      ));
     }
-  }, [worksets, selectedWorksetId]);
+
+    // Re-apply highlight if active
+    if (selectedWorksetId === worksetId) {
+      viewerRef.current?.clearHighlight(worksetId);
+      viewerRef.current?.highlightElements(worksetId, remaining, ws.color, ws.opacity);
+    }
+  }, [worksets, selectedWorksetId, supabaseModelId]);
 
   return (
     <div className="model-viewer-page">
@@ -553,6 +620,7 @@ export function ModelViewerPage() {
             onSelectionChanged={handleSelectionChanged}
           />
           <Annotations
+            ref={annotationsRef}
             viewerRef={viewerRef}
             active={annotationActive}
             onClose={handleAnnotationClose}
@@ -573,6 +641,7 @@ export function ModelViewerPage() {
           <Viewpoints
             viewerRef={viewerRef}
             supabaseModelId={supabaseModelId}
+            annotationsRef={annotationsRef}
           />
         </aside>
       )}

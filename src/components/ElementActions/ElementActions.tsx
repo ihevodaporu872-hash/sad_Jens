@@ -41,17 +41,28 @@ export function ElementActions({
   className,
 }: ElementActionsProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [pendingColor, setPendingColor] = useState('#ff8800');
   const colorRef = useRef<HTMLInputElement>(null);
 
   const handleColorClick = () => {
-    if (colorRef.current) {
-      colorRef.current.click();
-    }
+    setShowColorPicker((prev) => !prev);
   };
 
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onColorSelected(e.target.value);
+  const handleColorInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPendingColor(e.target.value);
+  };
+
+  const handleApplyColor = () => {
+    onColorSelected(pendingColor);
     setShowColorPicker(false);
+  };
+
+  const handleColorKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleApplyColor();
+    } else if (e.key === 'Escape') {
+      setShowColorPicker(false);
+    }
   };
 
   return (
@@ -97,7 +108,7 @@ export function ElementActions({
 
       <div className="ea-color-wrapper">
         <button
-          className="ea-btn ea-btn-color"
+          className={`ea-btn ea-btn-color ${showColorPicker ? 'ea-btn-active' : ''}`}
           onClick={handleColorClick}
           disabled={!hasSelection}
           title="Color selected elements"
@@ -106,14 +117,22 @@ export function ElementActions({
             <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
           </svg>
           <span>Color</span>
+          <span className="ea-color-preview" style={{ backgroundColor: pendingColor }} />
         </button>
-        <input
-          ref={colorRef}
-          type="color"
-          className="ea-color-input"
-          defaultValue="#ff8800"
-          onChange={handleColorChange}
-        />
+        {showColorPicker && (
+          <div className="ea-color-dropdown" onKeyDown={handleColorKeyDown}>
+            <input
+              ref={colorRef}
+              type="color"
+              className="ea-color-picker-visible"
+              value={pendingColor}
+              onChange={handleColorInput}
+            />
+            <button className="ea-color-apply-btn" onClick={handleApplyColor}>
+              Apply
+            </button>
+          </div>
+        )}
       </div>
 
       <button

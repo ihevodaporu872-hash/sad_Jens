@@ -39,6 +39,54 @@ const AXIS_LABELS: Record<Axis, string> = {
 
 export function SectionPlanes({ viewerRef, className }: SectionPlanesProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+
+  const didDrag = useRef(false);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    isDragging.current = true;
+    didDrag.current = false;
+    dragStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      px: rect.left,
+      py: rect.top,
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !dragStart.current) return;
+      const dx = ev.clientX - dragStart.current.x;
+      const dy = ev.clientY - dragStart.current.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        didDrag.current = true;
+      }
+      if (didDrag.current) {
+        setPosition({
+          x: dragStart.current.px + dx,
+          y: dragStart.current.py + dy,
+        });
+      }
+    };
+
+    const onMouseUp = () => {
+      isDragging.current = false;
+      dragStart.current = null;
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, []);
+
   const [planes, setPlanes] = useState<Record<Axis, PlaneState>>({
     x: { active: false, plane: null, offset: 0, min: -50, max: 50 },
     y: { active: false, plane: null, offset: 0, min: -50, max: 50 },
@@ -294,9 +342,22 @@ export function SectionPlanes({ viewerRef, className }: SectionPlanesProps) {
     return Math.abs(val) < 0.01 ? '0' : val.toFixed(2);
   };
 
+  const panelStyle: React.CSSProperties = position
+    ? { position: 'fixed', left: position.x, top: position.y, right: 'auto' }
+    : {};
+
   return (
-    <div className={`section-planes ${className || ''}`}>
-      <div className="section-planes-header" onClick={() => setCollapsed(!collapsed)}>
+    <div ref={panelRef} className={`section-planes ${className || ''}`} style={panelStyle}>
+      <div
+        className="section-planes-header"
+        onMouseDown={handleDragStart}
+        onClick={() => {
+          if (!didDrag.current) {
+            setCollapsed(!collapsed);
+          }
+        }}
+        style={{ cursor: 'grab' }}
+      >
         <div className="section-planes-title">
           <svg
             className="section-planes-icon"

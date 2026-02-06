@@ -164,6 +164,16 @@ export interface ViewpointData {
   coloredElements: { expressIds: number[]; color: string }[];
   clippingPlanes: { axis: 'x' | 'y' | 'z'; constant: number }[];
   thumbnail?: string;
+  annotations?: AnnotationEntryData[];
+}
+
+// Annotation entry data for viewpoint serialization
+export interface AnnotationEntryData {
+  type: 'text' | 'freehand' | 'cloud' | 'arrow';
+  points: { x: number; y: number }[];
+  color: string;
+  width: number;
+  text?: string;
 }
 
 export interface Viewpoint extends ViewpointData {

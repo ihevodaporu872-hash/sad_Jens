@@ -136,6 +136,54 @@ export function MeasureTools({ viewerRef, active, onClose, className }: MeasureT
   const [tempPoints, setTempPoints] = useState<THREE.Vector3[]>([]);
   const [statusText, setStatusText] = useState('');
 
+  // Drag-to-move state
+  const [panelPosition, setPanelPosition] = useState<{ x: number; y: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelDragging = useRef(false);
+  const panelDragStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const panelDidDrag = useRef(false);
+
+  const handlePanelDragStart = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    panelDragging.current = true;
+    panelDidDrag.current = false;
+    panelDragStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      px: rect.left,
+      py: rect.top,
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!panelDragging.current || !panelDragStart.current) return;
+      const dx = ev.clientX - panelDragStart.current.x;
+      const dy = ev.clientY - panelDragStart.current.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        panelDidDrag.current = true;
+      }
+      if (panelDidDrag.current) {
+        setPanelPosition({
+          x: panelDragStart.current.px + dx,
+          y: panelDragStart.current.py + dy,
+        });
+      }
+    };
+
+    const onMouseUp = () => {
+      panelDragging.current = false;
+      panelDragStart.current = null;
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, []);
+
   const measurementsRef = useRef<Measurement[]>([]);
   const tempPointsRef = useRef<THREE.Vector3[]>([]);
   const modeRef = useRef<MeasureMode>(null);
@@ -599,10 +647,14 @@ export function MeasureTools({ viewerRef, active, onClose, className }: MeasureT
 
   if (!active) return null;
 
+  const measurePanelStyle: React.CSSProperties = panelPosition
+    ? { position: 'fixed', left: panelPosition.x, top: panelPosition.y, bottom: 'auto', transform: 'none' }
+    : {};
+
   return (
-    <div className={`measure-tools ${className || ''}`}>
-      {/* Toolbar */}
-      <div className="measure-toolbar">
+    <div ref={panelRef} className={`measure-tools ${className || ''}`} style={measurePanelStyle}>
+      {/* Toolbar — draggable via header area */}
+      <div className="measure-toolbar" onMouseDown={handlePanelDragStart} style={{ cursor: 'grab' }}>
         <button
           className={`measure-btn ${mode === 'distance' ? 'measure-btn-active' : ''}`}
           onClick={() => setMode(mode === 'distance' ? null : 'distance')}

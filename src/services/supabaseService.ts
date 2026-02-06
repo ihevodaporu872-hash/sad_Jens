@@ -361,6 +361,7 @@ export async function createViewpoint(
       colored_elements: input.coloredElements,
       clipping_planes: input.clippingPlanes,
       thumbnail: input.thumbnail || null,
+      annotation_data: input.annotations || null,
     })
     .select()
     .single();
@@ -388,6 +389,7 @@ function dbViewpointToViewpoint(db: any): Viewpoint {
     coloredElements: db.colored_elements || [],
     clippingPlanes: db.clipping_planes || [],
     thumbnail: db.thumbnail || undefined,
+    annotations: db.annotation_data || undefined,
     createdAt: db.created_at,
   };
 }

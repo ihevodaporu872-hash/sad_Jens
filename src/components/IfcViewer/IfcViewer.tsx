@@ -785,12 +785,9 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
 
         // Build a frustum from the selection rectangle using the camera's projection
         const frustum = new THREE.Frustum();
-        const projectionMatrix = camera.projectionMatrix.clone();
-        const viewMatrix = camera.matrixWorldInverse.clone();
-        const vpMatrix = projectionMatrix.multiply(viewMatrix);
+        const vpMatrix = camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse);
 
         // Create custom frustum planes from the selection rectangle
-        // We modify the projection matrix to represent the sub-frustum
         // Method: Use the view-projection matrix and clip against the NDC box
 
         const planes = frustum.planes;
@@ -798,8 +795,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         // Extract rows from the VP matrix
         const me = vpMatrix.elements;
 
-        // Standard frustum extraction from VP matrix, but adjusted for the selection rectangle
-        // Left plane: row4 + ndcLeft * row1 => effectively clips at ndcLeft
+        // Left plane: row4 + ndcLeft * row1
         planes[0].set(
           me[3] + ndcLeft * me[0],
           me[7] + ndcLeft * me[4],
@@ -808,7 +804,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         );
         planes[0].normalize();
 
-        // Right plane: row4 - ndcRight * row1
+        // Right plane: -(row1 * ndcRight - row4) = row4 - ndcRight * row1
         planes[1].set(
           me[3] - ndcRight * me[0],
           me[7] - ndcRight * me[4],

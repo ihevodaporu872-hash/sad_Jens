@@ -80,3 +80,57 @@
   background-color: #5558e6;
   border-color: #a5b4fc;
 }
+
+/* Color preview swatch inline */
+.ea-color-preview {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #475569;
+  flex-shrink: 0;
+}
+
+/* Color picker dropdown */
+.ea-color-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 4px;
+  padding: 0.375rem;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.ea-color-picker-visible {
+  width: 36px;
+  height: 28px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+}
+
+.ea-color-apply-btn {
+  padding: 0.25rem 0.625rem;
+  background-color: #646cff;
+  border: 1px solid #818cf8;
+  border-radius: 4px;
+  color: #f8fafc;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+}
+
+.ea-color-apply-btn:hover {
+  background-color: #5558e6;
+}
