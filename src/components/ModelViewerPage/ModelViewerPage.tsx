@@ -510,12 +510,21 @@ export function ModelViewerPage() {
           onZoomToFit={handleZoomToFit}
           onBoxSelectToggle={handleBoxSelectToggle}
           boxSelectActive={boxSelectActive}
+          onAnnotationToggle={handleAnnotationToggle}
+          annotationActive={annotationActive}
         />
-        <IfcViewer
-          ref={viewerRef}
-          onElementSelected={handleElementSelected}
-          onSelectionChanged={handleSelectionChanged}
-        />
+        <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+          <IfcViewer
+            ref={viewerRef}
+            onElementSelected={handleElementSelected}
+            onSelectionChanged={handleSelectionChanged}
+          />
+          <Annotations
+            viewerRef={viewerRef}
+            active={annotationActive}
+            onClose={handleAnnotationClose}
+          />
+        </div>
         {hasModel && <SectionPlanes viewerRef={viewerRef} />}
       </main>
 

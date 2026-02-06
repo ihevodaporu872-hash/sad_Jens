@@ -87,6 +87,13 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
     const [hasModel, setHasModel] = useState(false);
     const [wireframeMode, setWireframeMode] = useState(false);
     const [loadingProgress, setLoadingProgress] = useState(0);
+    const [boxSelectMode, setBoxSelectMode] = useState(false);
+
+    // Box select state refs
+    const boxSelectModeRef = useRef(false);
+    const boxSelectStartRef = useRef<{ x: number; y: number } | null>(null);
+    const boxSelectRectRef = useRef<HTMLDivElement | null>(null);
+    const boxSelectDraggingRef = useRef(false);
 
     // ── Selection highlight helpers ──────────────────────────────────
 
@@ -439,6 +446,10 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         getControls() { return controlsRef.current; },
         getModelGroup() { return modelGroupRef.current; },
         getExpressIdToMeshes() { return expressIdToMeshesRef.current as Map<number, unknown[]>; },
+        setBoxSelectMode(enabled: boolean) {
+          boxSelectModeRef.current = enabled;
+          setBoxSelectMode(enabled);
+        },
       }),
       [applyHighlightToMesh, restoreMaterial, storeOriginalMaterial, applySelectionHighlight, removeSelectionHighlight, onElementSelected, onSelectionChanged]
     );
@@ -660,6 +671,250 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         }
       };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Box Select handlers ─────────────────────────────────────────
+
+    useEffect(() => {
+      const renderer = rendererRef.current;
+      const container = containerRef.current;
+      if (!renderer || !container) return;
+
+      const canvas = renderer.domElement;
+
+      const onBoxMouseDown = (e: MouseEvent) => {
+        if (!boxSelectModeRef.current) return;
+        // Only left button
+        if (e.button !== 0) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        boxSelectStartRef.current = { x, y };
+        boxSelectDraggingRef.current = true;
+
+        // Disable OrbitControls
+        if (controlsRef.current) {
+          controlsRef.current.enabled = false;
+        }
+
+        // Create selection rectangle overlay
+        const selRect = document.createElement('div');
+        selRect.style.position = 'absolute';
+        selRect.style.border = '1px dashed #646cff';
+        selRect.style.background = 'rgba(100, 108, 255, 0.1)';
+        selRect.style.pointerEvents = 'none';
+        selRect.style.left = `${x}px`;
+        selRect.style.top = `${y}px`;
+        selRect.style.width = '0px';
+        selRect.style.height = '0px';
+        selRect.style.zIndex = '1000';
+        container.style.position = 'relative';
+        container.appendChild(selRect);
+        boxSelectRectRef.current = selRect;
+      };
+
+      const onBoxMouseMove = (e: MouseEvent) => {
+        if (!boxSelectDraggingRef.current || !boxSelectStartRef.current || !boxSelectRectRef.current) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
+
+        const startX = boxSelectStartRef.current.x;
+        const startY = boxSelectStartRef.current.y;
+
+        const left = Math.min(startX, currentX);
+        const top = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        boxSelectRectRef.current.style.left = `${left}px`;
+        boxSelectRectRef.current.style.top = `${top}px`;
+        boxSelectRectRef.current.style.width = `${width}px`;
+        boxSelectRectRef.current.style.height = `${height}px`;
+      };
+
+      const onBoxMouseUp = (e: MouseEvent) => {
+        if (!boxSelectDraggingRef.current || !boxSelectStartRef.current) return;
+
+        boxSelectDraggingRef.current = false;
+
+        // Re-enable OrbitControls
+        if (controlsRef.current) {
+          controlsRef.current.enabled = true;
+        }
+
+        // Remove selection rectangle
+        if (boxSelectRectRef.current && container.contains(boxSelectRectRef.current)) {
+          container.removeChild(boxSelectRectRef.current);
+          boxSelectRectRef.current = null;
+        }
+
+        const camera = cameraRef.current;
+        const modelGroup = modelGroupRef.current;
+        if (!camera || !modelGroup) {
+          boxSelectStartRef.current = null;
+          return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const endX = e.clientX - rect.left;
+        const endY = e.clientY - rect.top;
+
+        const startX = boxSelectStartRef.current.x;
+        const startY = boxSelectStartRef.current.y;
+        boxSelectStartRef.current = null;
+
+        // Minimum drag distance check (avoid accidental tiny selections)
+        const dx = Math.abs(endX - startX);
+        const dy = Math.abs(endY - startY);
+        if (dx < 3 && dy < 3) return;
+
+        // Compute NDC coordinates for selection rectangle corners
+        const canvasWidth = rect.width;
+        const canvasHeight = rect.height;
+
+        const ndcLeft = (Math.min(startX, endX) / canvasWidth) * 2 - 1;
+        const ndcRight = (Math.max(startX, endX) / canvasWidth) * 2 - 1;
+        const ndcTop = -((Math.min(startY, endY) / canvasHeight) * 2 - 1);
+        const ndcBottom = -((Math.max(startY, endY) / canvasHeight) * 2 - 1);
+
+        // Build a frustum from the selection rectangle using the camera's projection
+        const frustum = new THREE.Frustum();
+        const projectionMatrix = camera.projectionMatrix.clone();
+        const viewMatrix = camera.matrixWorldInverse.clone();
+        const vpMatrix = projectionMatrix.multiply(viewMatrix);
+
+        // Create custom frustum planes from the selection rectangle
+        // We modify the projection matrix to represent the sub-frustum
+        // Method: Use the view-projection matrix and clip against the NDC box
+
+        const planes = frustum.planes;
+
+        // Extract rows from the VP matrix
+        const me = vpMatrix.elements;
+
+        // Standard frustum extraction from VP matrix, but adjusted for the selection rectangle
+        // Left plane: row4 + ndcLeft * row1 => effectively clips at ndcLeft
+        planes[0].set(
+          me[3] + ndcLeft * me[0],
+          me[7] + ndcLeft * me[4],
+          me[11] + ndcLeft * me[8],
+          me[15] + ndcLeft * me[12]
+        );
+        planes[0].normalize();
+
+        // Right plane: row4 - ndcRight * row1
+        planes[1].set(
+          me[3] - ndcRight * me[0],
+          me[7] - ndcRight * me[4],
+          me[11] - ndcRight * me[8],
+          me[15] - ndcRight * me[12]
+        );
+        planes[1].normalize();
+
+        // Bottom plane: row4 + ndcBottom * row2
+        planes[2].set(
+          me[3] + ndcBottom * me[1],
+          me[7] + ndcBottom * me[5],
+          me[11] + ndcBottom * me[9],
+          me[15] + ndcBottom * me[13]
+        );
+        planes[2].normalize();
+
+        // Top plane: row4 - ndcTop * row2
+        planes[3].set(
+          me[3] - ndcTop * me[1],
+          me[7] - ndcTop * me[5],
+          me[11] - ndcTop * me[9],
+          me[15] - ndcTop * me[13]
+        );
+        planes[3].normalize();
+
+        // Near plane (standard)
+        planes[4].set(
+          me[3] + me[2],
+          me[7] + me[6],
+          me[11] + me[10],
+          me[15] + me[14]
+        );
+        planes[4].normalize();
+
+        // Far plane (standard)
+        planes[5].set(
+          me[3] - me[2],
+          me[7] - me[6],
+          me[11] - me[10],
+          me[15] - me[14]
+        );
+        planes[5].normalize();
+
+        // Test all meshes in the model group against the frustum
+        const selectedExpressIds = new Set<number>();
+
+        modelGroup.traverse((child) => {
+          if (!(child instanceof THREE.Mesh)) return;
+          if (!child.visible) return;
+
+          const expressId = child.userData.expressID as number | undefined;
+          if (expressId === undefined) return;
+
+          // Compute bounding box if not already computed
+          if (!child.geometry.boundingBox) {
+            child.geometry.computeBoundingBox();
+          }
+
+          const box = child.geometry.boundingBox;
+          if (!box) return;
+
+          // Transform bounding box to world space
+          const worldBox = box.clone().applyMatrix4(child.matrixWorld);
+
+          if (frustum.intersectsBox(worldBox)) {
+            selectedExpressIds.add(expressId);
+          }
+        });
+
+        // Clear previous selection
+        for (const prevId of selectedIdsRef.current) {
+          removeSelectionHighlight(prevId);
+        }
+        selectedIdsRef.current.clear();
+
+        // Apply new selection
+        const idsArray = Array.from(selectedExpressIds);
+        for (const eid of idsArray) {
+          selectedIdsRef.current.add(eid);
+          applySelectionHighlight(eid);
+        }
+
+        // Notify callbacks
+        const modelId = modelIdRef.current ?? 0;
+        onSelectionChanged?.(
+          idsArray.map((eid) => ({ modelId, expressId: eid }))
+        );
+        if (idsArray.length > 0) {
+          onElementSelected?.({ modelId, expressId: idsArray[0] });
+        } else {
+          onElementSelected?.(null);
+        }
+      };
+
+      // Use capture phase to intercept before OrbitControls
+      canvas.addEventListener('mousedown', onBoxMouseDown, true);
+      window.addEventListener('mousemove', onBoxMouseMove);
+      window.addEventListener('mouseup', onBoxMouseUp);
+
+      return () => {
+        canvas.removeEventListener('mousedown', onBoxMouseDown, true);
+        window.removeEventListener('mousemove', onBoxMouseMove);
+        window.removeEventListener('mouseup', onBoxMouseUp);
+      };
+    }, [applySelectionHighlight, removeSelectionHighlight, onElementSelected, onSelectionChanged]);
 
     // ── Create mesh from IFC geometry ───────────────────────────────
 
@@ -1102,7 +1357,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          <div ref={containerRef} className="ifc-container">
+          <div ref={containerRef} className="ifc-container" style={boxSelectMode ? { cursor: 'crosshair' } : undefined}>
             {isLoading && (
               <div className="ifc-overlay">
                 <div className="ifc-spinner" />

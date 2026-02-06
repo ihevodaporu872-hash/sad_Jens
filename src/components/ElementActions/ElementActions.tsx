@@ -14,6 +14,10 @@ export interface ElementActionsProps {
   onZoomToFit?: () => void;
   onBoxSelectToggle?: () => void;
   boxSelectActive?: boolean;
+  onAnnotationToggle?: () => void;
+  annotationActive?: boolean;
+  onMeasureToggle?: () => void;
+  measureActive?: boolean;
   className?: string;
 }
 
@@ -30,6 +34,10 @@ export function ElementActions({
   onZoomToFit,
   onBoxSelectToggle,
   boxSelectActive,
+  onAnnotationToggle,
+  annotationActive,
+  onMeasureToggle,
+  measureActive,
   className,
 }: ElementActionsProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -181,6 +189,52 @@ export function ElementActions({
           </svg>
           <span>Box Sel</span>
         </button>
+      )}
+
+      {onAnnotationToggle && (
+        <>
+          <div className="ea-separator" />
+          <button
+            className={`ea-btn ${annotationActive ? 'ea-btn-active' : ''}`}
+            onClick={onAnnotationToggle}
+            disabled={!hasModel}
+            title="Annotation / redline tools"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+              <path d="M12 19l7-7 3 3-7 7-3-3z" />
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+              <path d="M2 2l7.586 7.586" />
+              <circle cx="11" cy="11" r="2" />
+            </svg>
+            <span>Annotate</span>
+          </button>
+        </>
+      )}
+
+      {onMeasureToggle && (
+        <>
+          <div className="ea-separator" />
+          <button
+            className={`ea-btn ${measureActive ? 'ea-btn-active' : ''}`}
+            onClick={onMeasureToggle}
+            disabled={!hasModel}
+            title="Measure distance, area, and angle"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+              <path d="M2 20h20" />
+              <path d="M6 20v-4" />
+              <path d="M10 20v-2" />
+              <path d="M14 20v-4" />
+              <path d="M18 20v-2" />
+              <path d="M22 20v-4" />
+              <path d="M2 20v-4" />
+              <line x1="4" y1="8" x2="20" y2="8" />
+              <polygon points="4,5 4,11 7,8" />
+              <polygon points="20,5 20,11 17,8" />
+            </svg>
+            <span>Measure</span>
+          </button>
+        </>
       )}
     </div>
   );

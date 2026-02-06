@@ -133,6 +133,7 @@ export interface IfcViewerRef {
   getControls: () => unknown | null;
   getModelGroup: () => unknown | null;
   getExpressIdToMeshes: () => Map<number, unknown[]>;
+  setBoxSelectMode: (enabled: boolean) => void;
 }
 
 // Viewer props
