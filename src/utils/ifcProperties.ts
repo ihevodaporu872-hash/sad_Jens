@@ -5,7 +5,7 @@
  * to find property sets (IfcRelDefinesByProperties), materials, and classifications.
  */
 
-import type { IfcElementInfo, IfcPropertySet, IfcProperty } from '../types/ifc';
+import type { IfcElementInfo, IfcPropertySet, IfcProperty, IfcKeyParams } from '../types/ifc';
 
 // IFC type constants from web-ifc
 const IFCRELDEFINESBYPROPERTIES = 4186316022;
@@ -18,6 +18,31 @@ const IFCMATERIAL = 1838606355;
 const IFCMATERIALLAYERSETUSAGE = 1303795690;
 const IFCMATERIALLAYERSET = 3303938423;
 const IFCMATERIALLAYER = 248100487;
+const IFCRELCONTAINEDINSPATIALSTRUCTURE = 3242617779;
+const IFCBUILDINGSTOREY = 3124254112;
+const IFCRELAGGREGATES = 160246688;
+const IFCELEMENTQUANTITY = 1883228015;
+
+// Property name patterns for key params extraction
+const VOLUME_NAMES = ['netvolume', 'grossvolume', 'volume', 'объем', 'объём'];
+const AREA_NAMES = ['netarea', 'grossarea', 'netsidearea', 'grosssidearea', 'area', 'площадь', 'crosssectionarea', 'outersurfacearea', 'totalsurfacearea', 'netsurfacearea'];
+const HEIGHT_NAMES = ['height', 'overallheight', 'nominalheight', 'высота'];
+const LENGTH_NAMES = ['length', 'overalllength', 'nominallength', 'длина', 'span'];
+const CONCRETE_CLASS_NAMES = ['concretestrength', 'concreteclass', 'concretegrade', 'класс бетона', 'класс_бетона', 'classofconcrete', 'strengthclass', 'марка бетона'];
+
+function matchesAny(name: string, patterns: string[]): boolean {
+  const lower = name.toLowerCase().replace(/[\s_-]/g, '');
+  return patterns.some((p) => lower.includes(p.replace(/[\s_-]/g, '')));
+}
+
+function formatValue(val: string | number | boolean | null): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number') {
+    // Round to 3 decimals for readability
+    return Number.isInteger(val) ? String(val) : val.toFixed(3);
+  }
+  return String(val);
+}
 
 function safeStr(val: unknown): string {
   if (val === null || val === undefined) return '';
@@ -263,12 +288,77 @@ export function getElementProperties(
       // ignore classification errors
     }
 
+    // ── Extract key parameters from property sets ──
+    const keyParams: IfcKeyParams = {};
+
+    for (const pset of propertySets) {
+      for (const prop of pset.properties) {
+        const pName = prop.name;
+        const pVal = formatValue(prop.value);
+        if (!pVal) continue;
+
+        if (!keyParams.volume && matchesAny(pName, VOLUME_NAMES)) {
+          keyParams.volume = pVal;
+        }
+        if (!keyParams.area && matchesAny(pName, AREA_NAMES)) {
+          keyParams.area = pVal;
+        }
+        if (!keyParams.height && matchesAny(pName, HEIGHT_NAMES)) {
+          keyParams.height = pVal;
+        }
+        if (!keyParams.length && matchesAny(pName, LENGTH_NAMES)) {
+          keyParams.length = pVal;
+        }
+        if (!keyParams.concreteClass && matchesAny(pName, CONCRETE_CLASS_NAMES)) {
+          keyParams.concreteClass = pVal;
+        }
+      }
+    }
+
+    // ── Find floor (IfcBuildingStorey) via spatial containment ──
+    try {
+      const contRelIds = api.GetLineIDsWithType(modelId, IFCRELCONTAINEDINSPATIALSTRUCTURE);
+      const contRelCount = contRelIds.size();
+
+      for (let i = 0; i < contRelCount; i++) {
+        if (keyParams.floor) break;
+        const relId = contRelIds.get(i);
+        try {
+          const rel = api.GetLine(modelId, relId, false);
+          if (!rel) continue;
+
+          const relatedElements = rel.RelatedElements as { value: number }[] | number[] | undefined;
+          if (!relatedElements || !Array.isArray(relatedElements)) continue;
+
+          let found = false;
+          for (const elem of relatedElements) {
+            const elemId = typeof elem === 'object' && elem !== null ? (elem as { value: number }).value : elem;
+            if (elemId === expressId) { found = true; break; }
+          }
+          if (!found) continue;
+
+          const structRef = rel.RelatingStructure;
+          const structId = typeof structRef === 'object' && structRef !== null
+            ? (structRef as { value: number }).value
+            : (structRef as number);
+          if (structId) {
+            const struct = api.GetLine(modelId, structId, false);
+            if (struct) {
+              const floorName = safeStr(struct.Name) || safeStr(struct.LongName);
+              if (floorName) keyParams.floor = floorName;
+            }
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
+
     return {
       expressId,
       globalId,
       ifcType,
       name,
       description: description || undefined,
+      keyParams,
       propertySets,
       materials,
       classifications,

@@ -57,12 +57,23 @@ export interface IfcProperty {
   type?: string;
 }
 
+// Key parameters extracted from IFC (shown only when present)
+export interface IfcKeyParams {
+  volume?: string;
+  area?: string;
+  floor?: string;
+  concreteClass?: string;
+  height?: string;
+  length?: string;
+}
+
 export interface IfcElementInfo {
   expressId: number;
   globalId: string;
   ifcType: string;
   name: string;
   description?: string;
+  keyParams: IfcKeyParams;
   propertySets: IfcPropertySet[];
   materials: string[];
   classifications: string[];
@@ -75,6 +86,8 @@ export interface IfcViewerRef {
   isolate: (expressIds: number[]) => void;
   unisolate: () => void;
   setElementsOpacity: (expressIds: number[], opacity: number) => void;
+  setOthersWireframe: (expressIdsToKeep: number[]) => void;
+  clearOthersWireframe: () => void;
   getModelId: () => number | null;
   getIfcApi: () => unknown | null;
   getSelectedExpressIds: () => number[];

@@ -53,6 +53,50 @@ export function PropertiesPanel({ elementInfo, className }: PropertiesPanelProps
           <span className="properties-element-name">{elementInfo.name || 'Unnamed'}</span>
         </div>
 
+        {/* Key parameters — shown only when they exist */}
+        {(elementInfo.keyParams.volume || elementInfo.keyParams.area || elementInfo.keyParams.floor ||
+          elementInfo.keyParams.concreteClass || elementInfo.keyParams.height || elementInfo.keyParams.length) && (
+          <div className="properties-section properties-key-params">
+            <div className="properties-section-title">Key Parameters</div>
+            {elementInfo.keyParams.floor && (
+              <div className="properties-kv">
+                <span className="properties-key">Floor</span>
+                <span className="properties-value">{elementInfo.keyParams.floor}</span>
+              </div>
+            )}
+            {elementInfo.keyParams.volume && (
+              <div className="properties-kv">
+                <span className="properties-key">Volume</span>
+                <span className="properties-value">{elementInfo.keyParams.volume} m³</span>
+              </div>
+            )}
+            {elementInfo.keyParams.area && (
+              <div className="properties-kv">
+                <span className="properties-key">Area</span>
+                <span className="properties-value">{elementInfo.keyParams.area} m²</span>
+              </div>
+            )}
+            {elementInfo.keyParams.height && (
+              <div className="properties-kv">
+                <span className="properties-key">Height</span>
+                <span className="properties-value">{elementInfo.keyParams.height}</span>
+              </div>
+            )}
+            {elementInfo.keyParams.length && (
+              <div className="properties-kv">
+                <span className="properties-key">Length</span>
+                <span className="properties-value">{elementInfo.keyParams.length}</span>
+              </div>
+            )}
+            {elementInfo.keyParams.concreteClass && (
+              <div className="properties-kv">
+                <span className="properties-key">Concrete Class</span>
+                <span className="properties-value">{elementInfo.keyParams.concreteClass}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Basic info */}
         <div className="properties-section">
           <div className="properties-section-title">Basic Info</div>

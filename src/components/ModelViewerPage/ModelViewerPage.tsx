@@ -97,7 +97,10 @@ export function ModelViewerPage() {
       await worksetApi.deleteWorkset(MODEL_ID, worksetId);
       setWorksets((prev) => prev.filter((w) => w.id !== worksetId));
       viewerRef.current?.clearHighlight(worksetId);
-      if (selectedWorksetId === worksetId) setSelectedWorksetId(null);
+      if (selectedWorksetId === worksetId) {
+        viewerRef.current?.clearOthersWireframe();
+        setSelectedWorksetId(null);
+      }
     } catch (err) {
       console.error('[Worksets] Failed to delete:', err);
     }
@@ -117,11 +120,14 @@ export function ModelViewerPage() {
       const updated = await worksetApi.updateWorkset(MODEL_ID, worksetId, { color });
       setWorksets((prev) => prev.map((w) => (w.id === worksetId ? updated : w)));
 
-      // If this workset is currently highlighted, re-apply
+      // If this workset is currently highlighted, re-apply with new color
       if (selectedWorksetId === worksetId) {
         const ws = worksets.find((w) => w.id === worksetId);
         if (ws) {
+          viewerRef.current?.clearHighlight(worksetId);
+          viewerRef.current?.clearOthersWireframe();
           viewerRef.current?.highlightElements(worksetId, ws.elementIds.expressIds, color, ws.opacity);
+          viewerRef.current?.setOthersWireframe(ws.elementIds.expressIds);
         }
       }
     } catch (err) {
@@ -137,7 +143,10 @@ export function ModelViewerPage() {
       if (selectedWorksetId === worksetId) {
         const ws = worksets.find((w) => w.id === worksetId);
         if (ws) {
+          viewerRef.current?.clearHighlight(worksetId);
+          viewerRef.current?.clearOthersWireframe();
           viewerRef.current?.highlightElements(worksetId, ws.elementIds.expressIds, ws.color, opacity);
+          viewerRef.current?.setOthersWireframe(ws.elementIds.expressIds);
         }
       }
     } catch (err) {
@@ -146,22 +155,26 @@ export function ModelViewerPage() {
   }, [selectedWorksetId, worksets]);
 
   const handleWorksetClick = useCallback((workset: Workset) => {
-    // Clear previous workset highlight
+    // Clear previous workset highlight and wireframe
     if (selectedWorksetId) {
       viewerRef.current?.clearHighlight(selectedWorksetId);
+      viewerRef.current?.clearOthersWireframe();
     }
 
     if (selectedWorksetId === workset.id) {
-      // Deselect
+      // Deselect — restore normal view
       setSelectedWorksetId(null);
     } else {
       setSelectedWorksetId(workset.id);
+      // Highlight workset elements with color
       viewerRef.current?.highlightElements(
         workset.id,
         workset.elementIds.expressIds,
         workset.color,
         workset.opacity
       );
+      // All OTHER elements become wireframe for clarity
+      viewerRef.current?.setOthersWireframe(workset.elementIds.expressIds);
     }
   }, [selectedWorksetId]);
 

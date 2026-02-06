@@ -64,6 +64,8 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
     const activeHighlightsRef = useRef<Map<string, { expressIds: number[]; color: string; opacity: number }>>(new Map());
     // Track isolated elements
     const isolatedIdsRef = useRef<Set<number> | null>(null);
+    // Track wireframe-others mode: stores original materials of "other" meshes
+    const wireframeOthersRef = useRef<Map<string, THREE.Material | THREE.Material[]>>(new Map());
     // Click tracking to distinguish click from drag
     const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -233,6 +235,54 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               }
             }
           }
+        },
+
+        setOthersWireframe(expressIdsToKeep: number[]) {
+          const keepSet = new Set(expressIdsToKeep);
+          const modelGroup = modelGroupRef.current;
+          if (!modelGroup) return;
+
+          // Clear previous wireframe-others state
+          this.clearOthersWireframe();
+
+          modelGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              const eid = child.userData.expressID as number | undefined;
+              if (eid !== undefined && !keepSet.has(eid)) {
+                // Store original material
+                if (!wireframeOthersRef.current.has(child.uuid)) {
+                  wireframeOthersRef.current.set(
+                    child.uuid,
+                    Array.isArray(child.material)
+                      ? child.material.map((m) => m.clone())
+                      : child.material.clone()
+                  );
+                }
+                // Apply wireframe
+                const wireMat = new THREE.MeshBasicMaterial({
+                  color: 0x333344,
+                  wireframe: true,
+                  transparent: true,
+                  opacity: 0.15,
+                });
+                child.material = wireMat;
+              }
+            }
+          });
+        },
+
+        clearOthersWireframe() {
+          const modelGroup = modelGroupRef.current;
+          if (!modelGroup) return;
+
+          for (const [uuid, origMat] of wireframeOthersRef.current) {
+            modelGroup.traverse((child) => {
+              if (child instanceof THREE.Mesh && child.uuid === uuid) {
+                child.material = Array.isArray(origMat) ? origMat.map((m) => m.clone()) : origMat.clone();
+              }
+            });
+          }
+          wireframeOthersRef.current.clear();
         },
 
         getModelId() {

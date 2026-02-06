@@ -57,6 +57,25 @@
   padding: 0.5rem 0;
 }
 
+/* Key parameters highlight section */
+.properties-key-params {
+  background-color: rgba(100, 108, 255, 0.08);
+  border-left: 3px solid #646cff;
+  margin: 0 0.5rem;
+  border-radius: 0 4px 4px 0;
+  padding: 0.375rem 0;
+}
+
+.properties-key-params .properties-key {
+  color: #a5b4fc;
+  font-weight: 500;
+}
+
+.properties-key-params .properties-value {
+  color: #f1f5f9;
+  font-weight: 500;
+}
+
 .properties-element-header {
   padding: 0.5rem 1rem;
   display: flex;
