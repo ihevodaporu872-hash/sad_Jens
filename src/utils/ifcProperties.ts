@@ -5,7 +5,7 @@
  * to find property sets (IfcRelDefinesByProperties), materials, and classifications.
  */
 
-import type { IfcElementInfo, IfcPropertySet, IfcProperty, IfcKeyParams } from '../types/ifc';
+import type { IfcElementInfo, IfcPropertySet, IfcProperty, IfcKeyParams, ElementIndexEntry } from '../types/ifc';
 
 // IFC type constants from web-ifc
 const IFCRELDEFINESBYPROPERTIES = 4186316022;
@@ -367,4 +367,58 @@ export function getElementProperties(
     console.error('[IFC Properties] Failed to get element properties:', e);
     return null;
   }
+}
+
+/**
+ * Build a lightweight index of ALL elements in the model for filtering/quantification.
+ * Processes in batches to avoid blocking the UI.
+ */
+export async function buildElementIndex(
+  ifcApi: unknown,
+  modelId: number,
+  expressIds: number[],
+  onProgress?: (done: number, total: number) => void
+): Promise<ElementIndexEntry[]> {
+  const entries: ElementIndexEntry[] = [];
+  const total = expressIds.length;
+  const BATCH = 50;
+
+  for (let i = 0; i < total; i += BATCH) {
+    const batch = expressIds.slice(i, i + BATCH);
+    for (const eid of batch) {
+      try {
+        const info = getElementProperties(ifcApi, modelId, eid);
+        if (!info) continue;
+
+        const searchableProps: string[] = [];
+        for (const pset of info.propertySets) {
+          for (const p of pset.properties) {
+            if (p.value !== null && p.value !== undefined) {
+              searchableProps.push(`${p.name}=${String(p.value)}`);
+            }
+          }
+        }
+
+        entries.push({
+          expressId: eid,
+          ifcType: info.ifcType,
+          name: info.name,
+          floor: info.keyParams.floor || '',
+          volume: parseFloat(info.keyParams.volume || '0') || 0,
+          area: parseFloat(info.keyParams.area || '0') || 0,
+          height: parseFloat(info.keyParams.height || '0') || 0,
+          length: parseFloat(info.keyParams.length || '0') || 0,
+          material: info.materials[0] || '',
+          searchableProps,
+        });
+      } catch {
+        // skip element
+      }
+    }
+    onProgress?.(Math.min(i + BATCH, total), total);
+    // Yield to UI thread
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  return entries;
 }

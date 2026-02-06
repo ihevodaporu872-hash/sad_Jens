@@ -1,5 +1,5 @@
 /**
- * Shared types for IFC Viewer with Worksets
+ * Shared types for IFC Viewer with Worksets, Smart Filter, Quantification
  */
 
 // Element selection info emitted by the viewer on click
@@ -79,18 +79,52 @@ export interface IfcElementInfo {
   classifications: string[];
 }
 
-// Viewer ref API exposed via forwardRef
+// ── Element Index (built after model load for fast filtering) ──
+
+export interface ElementIndexEntry {
+  expressId: number;
+  ifcType: string;
+  name: string;
+  floor: string;
+  volume: number;
+  area: number;
+  height: number;
+  length: number;
+  material: string;
+  // All property values flattened for search: "propName=value"
+  searchableProps: string[];
+}
+
+// ── Quantification row ──
+
+export interface QuantificationRow {
+  groupKey: string;         // e.g. "IfcWall" or "Floor 1"
+  count: number;
+  totalVolume: number;
+  totalArea: number;
+  expressIds: number[];
+}
+
+// ── Viewer ref API exposed via forwardRef ──
+
 export interface IfcViewerRef {
   highlightElements: (worksetId: string, expressIds: number[], color: string, opacity: number) => void;
   clearHighlight: (worksetId?: string) => void;
   isolate: (expressIds: number[]) => void;
   unisolate: () => void;
+  hideElements: (expressIds: number[]) => void;
+  showElements: (expressIds: number[]) => void;
+  showAll: () => void;
+  colorElements: (expressIds: number[], color: string) => void;
+  resetColors: () => void;
+  selectElements: (expressIds: number[]) => void;
   setElementsOpacity: (expressIds: number[], opacity: number) => void;
   setOthersWireframe: (expressIdsToKeep: number[]) => void;
   clearOthersWireframe: () => void;
   getModelId: () => number | null;
   getIfcApi: () => unknown | null;
   getSelectedExpressIds: () => number[];
+  getAllExpressIds: () => number[];
 }
 
 // Viewer props

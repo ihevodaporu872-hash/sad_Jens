@@ -1,0 +1,64 @@
+.element-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  background-color: #0f172a;
+  border-bottom: 1px solid #334155;
+  flex-wrap: wrap;
+}
+
+.ea-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ea-btn:hover:not(:disabled) {
+  background-color: #334155;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+.ea-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ea-btn svg {
+  flex-shrink: 0;
+}
+
+/* Color button wrapper */
+.ea-color-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.ea-color-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ea-btn-color {
+  border-color: #f59e0b;
+}
+
+.ea-btn-color:hover:not(:disabled) {
+  border-color: #fbbf24;
+}

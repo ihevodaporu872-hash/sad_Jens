@@ -19,6 +19,8 @@
 
 .model-viewer-sidebar-left {
   border-right: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
 }
 
 .model-viewer-sidebar-right {
@@ -33,6 +35,72 @@
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sidebar tabs */
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #334155;
+  background-color: #0f172a;
+  flex-shrink: 0;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 0.5rem 0.25rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #64748b;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar-tab:hover {
+  color: #cbd5e1;
+}
+
+.sidebar-tab.active {
+  color: #a5b4fc;
+  border-bottom-color: #646cff;
+}
+
+/* Index progress */
+.index-progress-bar {
+  position: relative;
+  height: 18px;
+  background-color: #1e293b;
+  border-bottom: 1px solid #334155;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.index-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #646cff 0%, #818cf8 100%);
+  opacity: 0.3;
+  transition: width 0.2s ease-out;
+}
+
+.index-progress-text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.625rem;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
 }
 
 /* Sidebar toggle buttons */

@@ -66,6 +66,10 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
     const isolatedIdsRef = useRef<Set<number> | null>(null);
     // Track wireframe-others mode: stores original materials of "other" meshes
     const wireframeOthersRef = useRef<Map<string, THREE.Material | THREE.Material[]>>(new Map());
+    // Track hidden elements
+    const hiddenIdsRef = useRef<Set<number>>(new Set());
+    // Track colored elements for resetColors
+    const coloredIdsRef = useRef<Set<number>>(new Set());
     // Click tracking to distinguish click from drag
     const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -293,11 +297,100 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           return ifcApiRef.current;
         },
 
+        hideElements(expressIds: number[]) {
+          for (const eid of expressIds) {
+            hiddenIdsRef.current.add(eid);
+            const meshes = expressIdToMeshesRef.current.get(eid);
+            if (!meshes) continue;
+            for (const mesh of meshes) {
+              mesh.visible = false;
+            }
+          }
+        },
+
+        showElements(expressIds: number[]) {
+          for (const eid of expressIds) {
+            hiddenIdsRef.current.delete(eid);
+            const meshes = expressIdToMeshesRef.current.get(eid);
+            if (!meshes) continue;
+            for (const mesh of meshes) {
+              mesh.visible = true;
+            }
+          }
+        },
+
+        showAll() {
+          hiddenIdsRef.current.clear();
+          const modelGroup = modelGroupRef.current;
+          if (!modelGroup) return;
+          modelGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.visible = true;
+            }
+          });
+        },
+
+        colorElements(expressIds: number[], color: string) {
+          for (const eid of expressIds) {
+            coloredIdsRef.current.add(eid);
+            const meshes = expressIdToMeshesRef.current.get(eid);
+            if (!meshes) continue;
+            for (const mesh of meshes) {
+              storeOriginalMaterial(mesh);
+              const mat = new THREE.MeshPhongMaterial({
+                color: hexToThreeColor(color),
+                side: THREE.DoubleSide,
+                shininess: 40,
+              });
+              mesh.material = mat;
+            }
+          }
+        },
+
+        resetColors() {
+          for (const eid of coloredIdsRef.current) {
+            const meshes = expressIdToMeshesRef.current.get(eid);
+            if (!meshes) continue;
+            for (const mesh of meshes) {
+              restoreMaterial(mesh);
+            }
+          }
+          coloredIdsRef.current.clear();
+        },
+
+        selectElements(expressIds: number[]) {
+          // Clear previous selection
+          for (const prevId of selectedIdsRef.current) {
+            removeSelectionHighlight(prevId);
+          }
+          selectedIdsRef.current.clear();
+
+          // Apply new selection
+          for (const eid of expressIds) {
+            selectedIdsRef.current.add(eid);
+            applySelectionHighlight(eid);
+          }
+
+          const modelId = modelIdRef.current ?? 0;
+          onSelectionChanged?.(
+            expressIds.map((eid) => ({ modelId, expressId: eid }))
+          );
+          if (expressIds.length > 0) {
+            onElementSelected?.({ modelId, expressId: expressIds[0] });
+          } else {
+            onElementSelected?.(null);
+          }
+        },
+
+        getAllExpressIds() {
+          return Array.from(expressIdToMeshesRef.current.keys());
+        },
+
         getSelectedExpressIds() {
           return Array.from(selectedIdsRef.current);
         },
       }),
-      [applyHighlightToMesh, restoreMaterial, storeOriginalMaterial]
+      [applyHighlightToMesh, restoreMaterial, storeOriginalMaterial, applySelectionHighlight, removeSelectionHighlight, onElementSelected, onSelectionChanged]
     );
 
     // ── Initialize Three.js scene and web-ifc ───────────────────────
@@ -655,6 +748,9 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         activeHighlightsRef.current.clear();
         selectedIdsRef.current.clear();
         isolatedIdsRef.current = null;
+        hiddenIdsRef.current.clear();
+        coloredIdsRef.current.clear();
+        wireframeOthersRef.current.clear();
 
         console.log('[IFC Viewer] Opening model...');
         const modelID = ifcApi.OpenModel(data, {

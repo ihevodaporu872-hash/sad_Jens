@@ -2,24 +2,31 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { IfcViewer } from '../IfcViewer';
 import { PropertiesPanel } from '../PropertiesPanel';
 import { WorksetsWidget } from '../WorksetsWidget';
-import { getElementProperties } from '../../utils/ifcProperties';
+import { SmartFilter } from '../SmartFilter';
+import { Quantification } from '../Quantification';
+import { ElementActions } from '../ElementActions';
+import { getElementProperties, buildElementIndex } from '../../utils/ifcProperties';
 import * as worksetApi from '../../services/worksetService';
 import type {
   IfcViewerRef,
   IfcElementInfo,
   ElementSelection,
   Workset,
+  ElementIndexEntry,
 } from '../../types/ifc';
 import './ModelViewerPage.css';
 
 // Use a fixed model ID for now (could be dynamic from URL params later)
 const MODEL_ID = 'default';
 
+type LeftTab = 'worksets' | 'filter' | 'quantification';
+
 export function ModelViewerPage() {
   const viewerRef = useRef<IfcViewerRef>(null);
 
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [leftTab, setLeftTab] = useState<LeftTab>('worksets');
 
   // Properties panel state
   const [elementInfo, setElementInfo] = useState<IfcElementInfo | null>(null);
@@ -30,6 +37,11 @@ export function ModelViewerPage() {
   // Worksets state
   const [worksets, setWorksets] = useState<Workset[]>([]);
   const [selectedWorksetId, setSelectedWorksetId] = useState<string | null>(null);
+
+  // Element index for SmartFilter & Quantification
+  const [elementIndex, setElementIndex] = useState<ElementIndexEntry[]>([]);
+  const [indexProgress, setIndexProgress] = useState<{ done: number; total: number } | null>(null);
+  const [hasModel, setHasModel] = useState(false);
 
   // Load worksets on mount
   useEffect(() => {
@@ -45,6 +57,28 @@ export function ModelViewerPage() {
       console.warn('[Worksets] Failed to load worksets:', err);
     }
   };
+
+  // Build element index after model is loaded
+  const buildIndex = useCallback(async () => {
+    const ifcApi = viewerRef.current?.getIfcApi();
+    const modelId = viewerRef.current?.getModelId();
+    const allIds = viewerRef.current?.getAllExpressIds() ?? [];
+
+    if (!ifcApi || modelId === null || modelId === undefined || allIds.length === 0) return;
+
+    setIndexProgress({ done: 0, total: allIds.length });
+    try {
+      const index = await buildElementIndex(ifcApi, modelId, allIds, (done, total) => {
+        setIndexProgress({ done, total });
+      });
+      setElementIndex(index);
+      setIndexProgress(null);
+      console.log(`[Index] Built element index: ${index.length} entries`);
+    } catch (err) {
+      console.error('[Index] Failed to build element index:', err);
+      setIndexProgress(null);
+    }
+  }, []);
 
   // ── Viewer callbacks ──────────────────────────────────────────
 
@@ -72,6 +106,73 @@ export function ModelViewerPage() {
     },
     []
   );
+
+  // Detect model load — poll for model availability
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const allIds = viewerRef.current?.getAllExpressIds() ?? [];
+      if (allIds.length > 0 && !hasModel) {
+        setHasModel(true);
+        buildIndex();
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [hasModel, buildIndex]);
+
+  // ── Element Actions ──────────────────────────────────────────
+
+  const handleHideSelected = useCallback(() => {
+    const ids = viewerRef.current?.getSelectedExpressIds() ?? [];
+    if (ids.length > 0) {
+      viewerRef.current?.hideElements(ids);
+    }
+  }, []);
+
+  const handleShowAll = useCallback(() => {
+    viewerRef.current?.showAll();
+  }, []);
+
+  const handleIsolateSelected = useCallback(() => {
+    const ids = viewerRef.current?.getSelectedExpressIds() ?? [];
+    if (ids.length > 0) {
+      viewerRef.current?.isolate(ids);
+    }
+  }, []);
+
+  const handleColorSelected = useCallback((color: string) => {
+    const ids = viewerRef.current?.getSelectedExpressIds() ?? [];
+    if (ids.length > 0) {
+      viewerRef.current?.colorElements(ids, color);
+    }
+  }, []);
+
+  const handleResetColors = useCallback(() => {
+    viewerRef.current?.resetColors();
+  }, []);
+
+  const handleInvertSelection = useCallback(() => {
+    const allIds = viewerRef.current?.getAllExpressIds() ?? [];
+    const selectedSet = new Set(viewerRef.current?.getSelectedExpressIds() ?? []);
+    const inverted = allIds.filter((id) => !selectedSet.has(id));
+    viewerRef.current?.selectElements(inverted);
+  }, []);
+
+  // ── SmartFilter handlers ──────────────────────────────────────
+
+  const handleFilterSelectElements = useCallback((expressIds: number[]) => {
+    viewerRef.current?.selectElements(expressIds);
+  }, []);
+
+  const handleFilterHighlightElements = useCallback((expressIds: number[], color: string) => {
+    viewerRef.current?.colorElements(expressIds, color);
+  }, []);
+
+  // ── Quantification handlers ──────────────────────────────────
+
+  const handleQuantSelectElements = useCallback((expressIds: number[]) => {
+    viewerRef.current?.selectElements(expressIds);
+  }, []);
 
   // ── Workset handlers ──────────────────────────────────────────
 
@@ -227,32 +328,91 @@ export function ModelViewerPage() {
       <button
         className={`sidebar-toggle sidebar-toggle-left ${leftOpen ? 'open' : ''}`}
         onClick={() => setLeftOpen(!leftOpen)}
-        title={leftOpen ? 'Hide worksets' : 'Show worksets'}
+        title={leftOpen ? 'Hide panel' : 'Show panel'}
       >
         {leftOpen ? '\u25C0' : '\u25B6'}
       </button>
 
-      {/* Left sidebar: Worksets */}
+      {/* Left sidebar: Tabs + Content */}
       {leftOpen && (
         <aside className="model-viewer-sidebar model-viewer-sidebar-left">
-          <WorksetsWidget
-            worksets={worksets}
-            selectedWorksetId={selectedWorksetId}
-            onWorksetClick={handleWorksetClick}
-            onCreateWorkset={handleCreateWorkset}
-            onDeleteWorkset={handleDeleteWorkset}
-            onRenameWorkset={handleRenameWorkset}
-            onColorChange={handleColorChange}
-            onOpacityChange={handleOpacityChange}
-            onAddElementsToWorkset={handleAddElementsToWorkset}
-            onRemoveElementsFromWorkset={handleRemoveElementsFromWorkset}
-            hasSelection={selectedExpressIds.length > 0}
-          />
+          {/* Tab bar */}
+          <div className="sidebar-tabs">
+            <button
+              className={`sidebar-tab ${leftTab === 'worksets' ? 'active' : ''}`}
+              onClick={() => setLeftTab('worksets')}
+            >
+              Worksets
+            </button>
+            <button
+              className={`sidebar-tab ${leftTab === 'filter' ? 'active' : ''}`}
+              onClick={() => setLeftTab('filter')}
+            >
+              Filter
+            </button>
+            <button
+              className={`sidebar-tab ${leftTab === 'quantification' ? 'active' : ''}`}
+              onClick={() => setLeftTab('quantification')}
+            >
+              Quant
+            </button>
+          </div>
+
+          {/* Tab content */}
+          {leftTab === 'worksets' && (
+            <WorksetsWidget
+              worksets={worksets}
+              selectedWorksetId={selectedWorksetId}
+              onWorksetClick={handleWorksetClick}
+              onCreateWorkset={handleCreateWorkset}
+              onDeleteWorkset={handleDeleteWorkset}
+              onRenameWorkset={handleRenameWorkset}
+              onColorChange={handleColorChange}
+              onOpacityChange={handleOpacityChange}
+              onAddElementsToWorkset={handleAddElementsToWorkset}
+              onRemoveElementsFromWorkset={handleRemoveElementsFromWorkset}
+              hasSelection={selectedExpressIds.length > 0}
+            />
+          )}
+          {leftTab === 'filter' && (
+            <SmartFilter
+              elementIndex={elementIndex}
+              onSelectElements={handleFilterSelectElements}
+              onHighlightElements={handleFilterHighlightElements}
+            />
+          )}
+          {leftTab === 'quantification' && (
+            <Quantification
+              elementIndex={elementIndex}
+              onSelectElements={handleQuantSelectElements}
+            />
+          )}
         </aside>
       )}
 
-      {/* Center: 3D Viewer */}
+      {/* Center: Actions toolbar + 3D Viewer */}
       <main className="model-viewer-center">
+        <ElementActions
+          hasSelection={selectedExpressIds.length > 0}
+          hasModel={hasModel}
+          onHideSelected={handleHideSelected}
+          onShowAll={handleShowAll}
+          onIsolateSelected={handleIsolateSelected}
+          onColorSelected={handleColorSelected}
+          onResetColors={handleResetColors}
+          onInvertSelection={handleInvertSelection}
+        />
+        {indexProgress && (
+          <div className="index-progress-bar">
+            <div
+              className="index-progress-fill"
+              style={{ width: `${Math.round((indexProgress.done / indexProgress.total) * 100)}%` }}
+            />
+            <span className="index-progress-text">
+              Indexing properties... {indexProgress.done}/{indexProgress.total}
+            </span>
+          </div>
+        )}
         <IfcViewer
           ref={viewerRef}
           onElementSelected={handleElementSelected}
