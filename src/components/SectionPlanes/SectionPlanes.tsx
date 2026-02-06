@@ -52,10 +52,15 @@ export function SectionPlanes({ viewerRef, className }: SectionPlanesProps) {
   });
 
   const planesRef = useRef(planes);
-  planesRef.current = planes;
-
   const boxClipRef = useRef(boxClip);
-  boxClipRef.current = boxClip;
+
+  useEffect(() => {
+    planesRef.current = planes;
+  }, [planes]);
+
+  useEffect(() => {
+    boxClipRef.current = boxClip;
+  }, [boxClip]);
 
   // Compute model bounding box for slider ranges
   const getModelBounds = useCallback((): { min: THREE.Vector3; max: THREE.Vector3 } | null => {
