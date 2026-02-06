@@ -13,7 +13,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-// Helper function to format file size
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -31,8 +30,10 @@ interface DocumentInfo {
 
 interface PageRenderInfo {
   pageIndex: number;
-  width: number;
-  height: number;
+  width: number;       // rendered (scaled) width
+  height: number;      // rendered (scaled) height
+  baseWidth: number;   // base width at scale=1 (PDF coordinate space)
+  baseHeight: number;  // base height at scale=1 (PDF coordinate space)
 }
 
 export function PdfViewer() {
@@ -49,7 +50,7 @@ export function PdfViewer() {
   const [scale, setScale] = useState(1.5);
 
   // Annotation state
-  const [annotationModel, setAnnotationModel] = useState<AnnotationModel | null>(null);
+  const [, setAnnotationModel] = useState<AnnotationModel | null>(null);
   const [layers, setLayers] = useState<AnnotationLayer[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -60,7 +61,7 @@ export function PdfViewer() {
     setError(null);
   }, []);
 
-  // Render a single page to canvas and return viewport info
+  // Render a single page to canvas and return viewport info (including base dimensions)
   const renderPage = useCallback(async (
     pdf: pdfjsLib.PDFDocumentProxy,
     pageNum: number,
@@ -68,6 +69,10 @@ export function PdfViewer() {
     renderScale: number,
   ): Promise<PageRenderInfo> => {
     const page = await pdf.getPage(pageNum);
+
+    // Get base viewport (scale=1) for coordinate mapping
+    const baseViewport = page.getViewport({ scale: 1 });
+    // Get scaled viewport for rendering
     const viewport = page.getViewport({ scale: renderScale });
 
     const pageDiv = document.createElement('div');
@@ -83,18 +88,6 @@ export function PdfViewer() {
     canvas.style.display = 'block';
 
     pageDiv.appendChild(canvas);
-
-    // Overlay container — will be filled by React portal
-    const overlayContainer = document.createElement('div');
-    overlayContainer.className = 'pdf-overlay-container';
-    overlayContainer.setAttribute('data-overlay-page', String(pageNum));
-    overlayContainer.style.position = 'absolute';
-    overlayContainer.style.top = '0';
-    overlayContainer.style.left = '0';
-    overlayContainer.style.width = `${viewport.width}px`;
-    overlayContainer.style.height = `${viewport.height}px`;
-    overlayContainer.style.pointerEvents = 'none';
-    pageDiv.appendChild(overlayContainer);
 
     // Page number label
     const label = document.createElement('div');
@@ -113,14 +106,14 @@ export function PdfViewer() {
       pageIndex: pageNum,
       width: viewport.width,
       height: viewport.height,
+      baseWidth: baseViewport.width,
+      baseHeight: baseViewport.height,
     };
   }, []);
 
   // Render all pages
   const renderAllPages = useCallback(async (pdf: pdfjsLib.PDFDocumentProxy, renderScale: number) => {
     if (!containerRef.current) return;
-
-    // Clear previous content
     containerRef.current.innerHTML = '';
 
     const viewports: PageRenderInfo[] = [];
@@ -137,7 +130,6 @@ export function PdfViewer() {
     setError(null);
 
     try {
-      // Dispose previous document
       if (pdfDocRef.current) {
         await pdfDocRef.current.destroy();
         pdfDocRef.current = null;
@@ -169,24 +161,21 @@ export function PdfViewer() {
       setError('Please select a valid PDF file');
       return;
     }
-
     const arrayBuffer = await file.arrayBuffer();
     await loadPdfData(arrayBuffer, file.name, file.size);
   }, [loadPdfData]);
 
-  // --- Markup file loading ---
-  const loadMarkupFile = useCallback(async (file: File) => {
+  // --- Markup loading (from text) ---
+  const loadMarkupFromText = useCallback((text: string, fileName: string) => {
     try {
-      const text = await file.text();
-      const fileName = file.name.toLowerCase();
       let model: AnnotationModel;
+      const lowerName = fileName.toLowerCase();
 
-      if (fileName.endsWith('.xml')) {
+      if (lowerName.endsWith('.xml')) {
         model = parseXmlMarkup(text);
-      } else if (fileName.endsWith('.json')) {
+      } else if (lowerName.endsWith('.json')) {
         model = parseJsonMarkup(text);
       } else {
-        // Try to detect format
         const trimmed = text.trim();
         if (trimmed.startsWith('<') || trimmed.startsWith('<?xml')) {
           model = parseXmlMarkup(text);
@@ -200,34 +189,36 @@ export function PdfViewer() {
 
       setAnnotationModel(model);
       setLayers(model.layers);
-      setMarkupFileName(file.name);
+      setMarkupFileName(fileName);
       setShowSidebar(true);
       setSelectedItemId(null);
+      console.log('Markup loaded:', fileName, '— layers:', model.layers.length, '— items:', model.layers.reduce((s, l) => s + l.items.length, 0));
     } catch (err) {
       console.error('Failed to parse markup:', err);
       setError(err instanceof Error ? err.message : 'Failed to parse markup file');
     }
   }, []);
 
-  // Handle file upload via input
+  // Load markup from File
+  const loadMarkupFile = useCallback(async (file: File) => {
+    const text = await file.text();
+    loadMarkupFromText(text, file.name);
+  }, [loadMarkupFromText]);
+
+  // Handle file uploads
   const handleFileUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      await loadPdfFile(file);
-    }
+    if (file) await loadPdfFile(file);
     event.target.value = '';
   }, [loadPdfFile]);
 
-  // Handle markup file upload
   const handleMarkupUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      await loadMarkupFile(file);
-    }
+    if (file) await loadMarkupFile(file);
     event.target.value = '';
   }, [loadMarkupFile]);
 
-  // Drag & Drop handlers — support both PDF and markup files
+  // Drag & Drop
   const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -256,16 +247,10 @@ export function PdfViewer() {
     }
   }, [loadPdfFile, loadMarkupFile]);
 
-  // Handle click on upload buttons
-  const handleUploadClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  const handleUploadClick = useCallback(() => fileInputRef.current?.click(), []);
+  const handleMarkupUploadClick = useCallback(() => markupInputRef.current?.click(), []);
 
-  const handleMarkupUploadClick = useCallback(() => {
-    markupInputRef.current?.click();
-  }, []);
-
-  // Load test file
+  // Load test PDF
   const loadTestFile = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -280,61 +265,59 @@ export function PdfViewer() {
     }
   }, [loadPdfData]);
 
+  // Load test markup (XML)
+  const loadTestMarkup = useCallback(async () => {
+    setError(null);
+    try {
+      const response = await fetch('/test-files/test-markup.xml');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      loadMarkupFromText(text, 'test-markup.xml');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load test markup');
+    }
+  }, [loadMarkupFromText]);
+
   // Navigation
   const goToPage = useCallback((pageNum: number) => {
     if (!containerRef.current || !documentInfo) return;
     const clampedPage = Math.max(1, Math.min(pageNum, documentInfo.totalPages));
     setCurrentPage(clampedPage);
     const pageEl = containerRef.current.querySelector(`[data-page-number="${clampedPage}"]`);
-    if (pageEl) {
-      pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [documentInfo]);
 
   // Zoom
   const handleZoomIn = useCallback(async () => {
     const newScale = Math.min(scale + 0.25, 4);
     setScale(newScale);
-    if (pdfDocRef.current) {
-      await renderAllPages(pdfDocRef.current, newScale);
-    }
+    if (pdfDocRef.current) await renderAllPages(pdfDocRef.current, newScale);
   }, [scale, renderAllPages]);
 
   const handleZoomOut = useCallback(async () => {
     const newScale = Math.max(scale - 0.25, 0.5);
     setScale(newScale);
-    if (pdfDocRef.current) {
-      await renderAllPages(pdfDocRef.current, newScale);
-    }
+    if (pdfDocRef.current) await renderAllPages(pdfDocRef.current, newScale);
   }, [scale, renderAllPages]);
 
   // --- Annotation layer controls ---
   const handleToggleLayer = useCallback((layerId: string) => {
-    setLayers(prev =>
-      prev.map(l => l.id === layerId ? { ...l, visible: !l.visible } : l),
-    );
+    setLayers(prev => prev.map(l => l.id === layerId ? { ...l, visible: !l.visible } : l));
   }, []);
 
   const handleChangeLayerColor = useCallback((layerId: string, color: string) => {
-    setLayers(prev =>
-      prev.map(l => l.id === layerId ? { ...l, color } : l),
-    );
+    setLayers(prev => prev.map(l => l.id === layerId ? { ...l, color } : l));
   }, []);
 
   const handleChangeLayerOpacity = useCallback((layerId: string, opacity: number) => {
-    setLayers(prev =>
-      prev.map(l => l.id === layerId ? { ...l, opacity } : l),
-    );
+    setLayers(prev => prev.map(l => l.id === layerId ? { ...l, opacity } : l));
   }, []);
 
   const handleSelectItem = useCallback((item: AnnotationItem) => {
     setSelectedItemId(prev => prev === item.id ? null : item.id);
-    // Scroll to the page of the selected item
     if (containerRef.current) {
       const pageEl = containerRef.current.querySelector(`[data-page-number="${item.page}"]`);
-      if (pageEl) {
-        pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, []);
 
@@ -342,17 +325,11 @@ export function PdfViewer() {
     setSelectedItemId(prev => prev === item.id ? null : item.id);
   }, []);
 
-  const handleCloseSidebar = useCallback(() => {
-    setShowSidebar(false);
-  }, []);
+  const handleCloseSidebar = useCallback(() => setShowSidebar(false), []);
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
-    return () => {
-      if (pdfDocRef.current) {
-        pdfDocRef.current.destroy();
-      }
-    };
+    return () => { if (pdfDocRef.current) pdfDocRef.current.destroy(); };
   }, []);
 
   return (
@@ -381,26 +358,14 @@ export function PdfViewer() {
             )}
             {documentInfo && (
               <>
-                <button className="pdf-btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
-                  Prev
-                </button>
-                <button className="pdf-btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= documentInfo.totalPages}>
-                  Next
-                </button>
-                <button className="pdf-btn" onClick={handleZoomOut} disabled={scale <= 0.5}>
-                  -
-                </button>
+                <button className="pdf-btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>Prev</button>
+                <button className="pdf-btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= documentInfo.totalPages}>Next</button>
+                <button className="pdf-btn" onClick={handleZoomOut} disabled={scale <= 0.5}>-</button>
                 <span style={{ color: '#e0e0e0', fontSize: '0.8rem' }}>{Math.round(scale * 100)}%</span>
-                <button className="pdf-btn" onClick={handleZoomIn} disabled={scale >= 4}>
-                  +
-                </button>
+                <button className="pdf-btn" onClick={handleZoomIn} disabled={scale >= 4}>+</button>
               </>
             )}
-            <button
-              className="pdf-upload-btn"
-              onClick={handleUploadClick}
-              disabled={isLoading}
-            >
+            <button className="pdf-upload-btn" onClick={handleUploadClick} disabled={isLoading}>
               Upload PDF
             </button>
             <button
@@ -415,35 +380,24 @@ export function PdfViewer() {
               <button
                 className={`pdf-btn ${showSidebar ? 'pdf-btn-active' : ''}`}
                 onClick={() => setShowSidebar(!showSidebar)}
-                title="Toggle annotation sidebar"
               >
                 Layers
               </button>
             )}
-            <button
-              className="pdf-btn"
-              onClick={loadTestFile}
-              disabled={isLoading}
-              data-testid="load-test-pdf"
-            >
+            <button className="pdf-btn" onClick={loadTestFile} disabled={isLoading} data-testid="load-test-pdf">
               Load Test PDF
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,application/pdf"
-              onChange={handleFileUpload}
-              className="pdf-file-input"
-              disabled={isLoading}
-            />
-            <input
-              ref={markupInputRef}
-              type="file"
-              accept=".xml,.json,application/xml,application/json,text/xml"
-              onChange={handleMarkupUpload}
-              className="pdf-file-input"
-              disabled={isLoading}
-            />
+            <button
+              className="pdf-btn pdf-test-markup-btn"
+              onClick={loadTestMarkup}
+              disabled={isLoading || !documentInfo}
+              data-testid="load-test-markup"
+              title="Load test-markup.xml from server"
+            >
+              Load Test Markup
+            </button>
+            <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" onChange={handleFileUpload} className="pdf-file-input" disabled={isLoading} />
+            <input ref={markupInputRef} type="file" accept=".xml,.json,application/xml,application/json,text/xml" onChange={handleMarkupUpload} className="pdf-file-input" disabled={isLoading} />
           </div>
         </div>
         <div
@@ -454,14 +408,16 @@ export function PdfViewer() {
         >
           <div ref={containerRef} className="pdf-pages-container" data-testid="pdf-pages-container" />
 
-          {/* SVG Overlays rendered on top of each page */}
-          {layers.length > 0 && pageViewports.map(({ pageIndex, width, height }) => (
+          {/* SVG Overlays — use base dimensions for viewBox so coordinates map correctly */}
+          {layers.length > 0 && pageViewports.map(({ pageIndex, width, height, baseWidth, baseHeight }) => (
             <PdfPageOverlay
               key={`overlay-${pageIndex}-${scale}`}
               containerRef={containerRef}
               pageIndex={pageIndex}
               width={width}
               height={height}
+              baseWidth={baseWidth}
+              baseHeight={baseHeight}
               layers={layers}
               selectedItemId={selectedItemId}
               onItemClick={handleOverlayItemClick}
@@ -499,8 +455,7 @@ export function PdfViewer() {
                   <line x1="9" y1="15" x2="15" y2="15" />
                 </svg>
                 <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Drop PDF + markup files here</p>
-                <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>or click "Upload PDF" and "Load Markup" buttons above</p>
-                <p style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.5rem' }}>Supports XML and JSON markup formats</p>
+                <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>or use buttons above</p>
               </div>
             </div>
           )}
@@ -522,13 +477,15 @@ export function PdfViewer() {
   );
 }
 
-// --- Helper component to position SVG overlay on a specific page ---
+// --- Helper: position SVG overlay on a specific PDF page ---
 
 interface PdfPageOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   pageIndex: number;
-  width: number;
-  height: number;
+  width: number;       // rendered (scaled)
+  height: number;      // rendered (scaled)
+  baseWidth: number;   // base at scale=1
+  baseHeight: number;  // base at scale=1
   layers: AnnotationLayer[];
   selectedItemId: string | null;
   onItemClick: (item: AnnotationItem) => void;
@@ -540,13 +497,14 @@ function PdfPageOverlay({
   pageIndex,
   width,
   height,
+  baseWidth,
+  baseHeight,
   layers,
   selectedItemId,
   onItemClick,
   scale,
 }: PdfPageOverlayProps) {
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -554,7 +512,6 @@ function PdfPageOverlay({
     const pageEl = containerRef.current.querySelector(`[data-page-number="${pageIndex}"]`) as HTMLElement;
     if (!pageEl) return;
 
-    // Position overlay relative to the pdf-container (which has position: relative)
     const updatePosition = () => {
       const containerRect = containerRef.current!.getBoundingClientRect();
       const pageRect = pageEl.getBoundingClientRect();
@@ -566,7 +523,6 @@ function PdfPageOverlay({
 
     updatePosition();
 
-    // Update on scroll
     const scrollContainer = containerRef.current.parentElement;
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', updatePosition);
@@ -576,21 +532,17 @@ function PdfPageOverlay({
 
   if (!position) return null;
 
-  // Check if any visible layer has items on this page
-  const hasItems = layers.some(
-    l => l.visible && l.items.some(i => i.page === pageIndex),
-  );
+  const hasItems = layers.some(l => l.visible && l.items.some(i => i.page === pageIndex));
   if (!hasItems) return null;
 
   return (
     <div
-      ref={overlayRef}
       style={{
         position: 'absolute',
         top: position.top,
         left: position.left,
-        width: width,
-        height: height,
+        width,
+        height,
         pointerEvents: 'none',
         zIndex: 5,
       }}
@@ -599,6 +551,8 @@ function PdfPageOverlay({
         pageIndex={pageIndex}
         viewportWidth={width}
         viewportHeight={height}
+        baseWidth={baseWidth}
+        baseHeight={baseHeight}
         layers={layers}
         selectedItemId={selectedItemId}
         onItemClick={onItemClick}

@@ -3,32 +3,23 @@ import type { AnnotationItem, AnnotationLayer, AnnotationPoint } from './types';
 
 interface PdfOverlayProps {
   pageIndex: number; // 1-based
-  viewportWidth: number;
-  viewportHeight: number;
+  viewportWidth: number;   // rendered (scaled) width
+  viewportHeight: number;  // rendered (scaled) height
+  baseWidth: number;       // base width at scale=1 (PDF coordinate space)
+  baseHeight: number;      // base height at scale=1 (PDF coordinate space)
   layers: AnnotationLayer[];
   selectedItemId: string | null;
   onItemClick: (item: AnnotationItem) => void;
 }
 
-/**
- * Compute centroid of a polygon for label placement
- */
 function computeCentroid(points: AnnotationPoint[]): AnnotationPoint {
   if (points.length === 0) return { x: 0, y: 0 };
   if (points.length === 1) return points[0];
-
-  let cx = 0;
-  let cy = 0;
-  for (const p of points) {
-    cx += p.x;
-    cy += p.y;
-  }
+  let cx = 0, cy = 0;
+  for (const p of points) { cx += p.x; cy += p.y; }
   return { x: cx / points.length, y: cy / points.length };
 }
 
-/**
- * Compute area of a polygon using the Shoelace formula (in PDF coordinate units)
- */
 function computePolygonArea(points: AnnotationPoint[]): number {
   if (points.length < 3) return 0;
   let area = 0;
@@ -41,41 +32,43 @@ function computePolygonArea(points: AnnotationPoint[]): number {
   return Math.abs(area) / 2;
 }
 
-/**
- * Format area value with units
- */
 function formatArea(area: number, scaleX?: number, scaleUnits?: string): string {
   if (scaleX && scaleX > 0 && scaleUnits) {
-    // Convert from PDF units² to real units²
     const realArea = area / (scaleX * scaleX);
-    if (realArea >= 1) {
-      return `${realArea.toFixed(2)} ${scaleUnits}²`;
-    }
-    return `${realArea.toFixed(4)} ${scaleUnits}²`;
+    if (realArea >= 1) return `${realArea.toFixed(2)} ${scaleUnits}\u00B2`;
+    return `${realArea.toFixed(4)} ${scaleUnits}\u00B2`;
   }
-  return `${area.toFixed(1)} px²`;
+  return `${area.toFixed(1)} px\u00B2`;
 }
 
+/**
+ * SVG overlay for one PDF page.
+ *
+ * KEY SCALE MECHANISM:
+ * - SVG element has width/height = rendered (scaled) pixel size
+ * - SVG viewBox = "0 0 baseWidth baseHeight" (base PDF coordinates at scale=1)
+ * - Annotation coordinates are in base PDF space
+ * - SVG automatically maps base coords → rendered pixels
+ * - When user zooms, width/height change but viewBox stays the same
+ *   → annotations scale perfectly with the PDF
+ */
 export function PdfOverlay({
   pageIndex,
   viewportWidth,
   viewportHeight,
+  baseWidth,
+  baseHeight,
   layers,
   selectedItemId,
   onItemClick,
 }: PdfOverlayProps) {
-  // Collect all visible items for this page across all visible layers
   const pageItems = useMemo(() => {
     const items: Array<{ item: AnnotationItem; layerColor: string; layerOpacity: number }> = [];
     for (const layer of layers) {
       if (!layer.visible) continue;
       for (const item of layer.items) {
         if (item.page === pageIndex) {
-          items.push({
-            item,
-            layerColor: layer.color,
-            layerOpacity: layer.opacity,
-          });
+          items.push({ item, layerColor: layer.color, layerOpacity: layer.opacity });
         }
       }
     }
@@ -92,12 +85,16 @@ export function PdfOverlay({
 
   if (pageItems.length === 0) return null;
 
+  // Scale factor for stroke widths and font sizes so they look consistent regardless of zoom
+  const scaleRatio = viewportWidth / baseWidth;
+
   return (
     <svg
       className="pdf-annotation-overlay"
       width={viewportWidth}
       height={viewportHeight}
-      viewBox={`0 0 ${viewportWidth} ${viewportHeight}`}
+      viewBox={`0 0 ${baseWidth} ${baseHeight}`}
+      preserveAspectRatio="none"
       style={{
         position: 'absolute',
         top: 0,
@@ -113,40 +110,19 @@ export function PdfOverlay({
         switch (item.kind) {
           case 'count_point':
             return (
-              <CountPointMarker
-                key={item.id}
-                item={item}
-                color={color}
-                opacity={opacity}
-                isSelected={isSelected}
-                onClick={handleItemClick}
-              />
+              <CountPointMarker key={item.id} item={item} color={color} opacity={opacity}
+                isSelected={isSelected} onClick={handleItemClick} scaleRatio={scaleRatio} />
             );
-
           case 'dimension_line':
             return (
-              <DimensionLineMarker
-                key={item.id}
-                item={item}
-                color={color}
-                opacity={opacity}
-                isSelected={isSelected}
-                onClick={handleItemClick}
-              />
+              <DimensionLineMarker key={item.id} item={item} color={color} opacity={opacity}
+                isSelected={isSelected} onClick={handleItemClick} scaleRatio={scaleRatio} />
             );
-
           case 'area_polygon':
             return (
-              <AreaPolygonMarker
-                key={item.id}
-                item={item}
-                color={color}
-                opacity={opacity}
-                isSelected={isSelected}
-                onClick={handleItemClick}
-              />
+              <AreaPolygonMarker key={item.id} item={item} color={color} opacity={opacity}
+                isSelected={isSelected} onClick={handleItemClick} scaleRatio={scaleRatio} />
             );
-
           default:
             return null;
         }
@@ -155,7 +131,7 @@ export function PdfOverlay({
   );
 }
 
-// --- Sub-components for each annotation type ---
+// --- Sub-components ---
 
 interface MarkerProps {
   item: AnnotationItem;
@@ -163,62 +139,35 @@ interface MarkerProps {
   opacity: number;
   isSelected: boolean;
   onClick: (e: React.MouseEvent, item: AnnotationItem) => void;
+  scaleRatio: number; // for consistent stroke/font sizes
 }
 
-function CountPointMarker({ item, color, opacity, isSelected, onClick }: MarkerProps) {
+function CountPointMarker({ item, color, opacity, isSelected, onClick, scaleRatio }: MarkerProps) {
   const point = item.points[0];
   if (!point) return null;
 
-  const radius = isSelected ? 8 : 6;
+  // Fixed pixel sizes in base coordinates
+  const radius = (isSelected ? 8 : 6) / scaleRatio;
+  const hitRadius = 14 / scaleRatio;
+  const strokeW = (isSelected ? 3 : 2) / scaleRatio;
+  const fontSize = 12 / scaleRatio;
 
   return (
-    <g
-      style={{ pointerEvents: 'all', cursor: 'pointer' }}
-      onClick={(e) => onClick(e, item)}
-    >
-      {/* Hit area (larger invisible circle) */}
-      <circle
-        cx={point.x}
-        cy={point.y}
-        r={12}
-        fill="transparent"
-      />
-      {/* Visible marker */}
-      <circle
-        cx={point.x}
-        cy={point.y}
-        r={radius}
-        fill={color}
-        fillOpacity={opacity * 0.6}
-        stroke={isSelected ? '#ffffff' : color}
-        strokeWidth={isSelected ? 3 : 2}
-        strokeOpacity={opacity}
-      />
-      {/* Selection ring */}
+    <g style={{ pointerEvents: 'all', cursor: 'pointer' }} onClick={(e) => onClick(e, item)}>
+      <circle cx={point.x} cy={point.y} r={hitRadius} fill="transparent" />
+      <circle cx={point.x} cy={point.y} r={radius}
+        fill={color} fillOpacity={opacity * 0.6}
+        stroke={isSelected ? '#ffffff' : color} strokeWidth={strokeW} strokeOpacity={opacity} />
       {isSelected && (
-        <circle
-          cx={point.x}
-          cy={point.y}
-          r={radius + 4}
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth={1.5}
-          strokeDasharray="3 3"
-          opacity={0.8}
-        />
+        <circle cx={point.x} cy={point.y} r={radius + 4 / scaleRatio}
+          fill="none" stroke="#ffffff" strokeWidth={1.5 / scaleRatio}
+          strokeDasharray={`${3 / scaleRatio} ${3 / scaleRatio}`} opacity={0.8} />
       )}
-      {/* Label */}
       {item.label && (
-        <text
-          x={point.x + radius + 4}
-          y={point.y + 4}
-          fill={color}
-          fontSize={12}
-          fontFamily="Arial, sans-serif"
-          fontWeight={isSelected ? 'bold' : 'normal'}
-          opacity={opacity}
-          style={{ pointerEvents: 'none' }}
-        >
+        <text x={point.x + radius + 4 / scaleRatio} y={point.y + fontSize / 3}
+          fill={color} fontSize={fontSize} fontFamily="Arial, sans-serif"
+          fontWeight={isSelected ? 'bold' : 'normal'} opacity={opacity}
+          style={{ pointerEvents: 'none' }}>
           {item.label}
         </text>
       )}
@@ -226,64 +175,35 @@ function CountPointMarker({ item, color, opacity, isSelected, onClick }: MarkerP
   );
 }
 
-function DimensionLineMarker({ item, color, opacity, isSelected, onClick }: MarkerProps) {
+function DimensionLineMarker({ item, color, opacity, isSelected, onClick, scaleRatio }: MarkerProps) {
   if (item.points.length < 2) {
-    return <CountPointMarker item={item} color={color} opacity={opacity} isSelected={isSelected} onClick={onClick} />;
+    return <CountPointMarker item={item} color={color} opacity={opacity} isSelected={isSelected} onClick={onClick} scaleRatio={scaleRatio} />;
   }
 
   const [p1, p2] = item.points;
   const midX = (p1.x + p2.x) / 2;
   const midY = (p1.y + p2.y) / 2;
+  const strokeW = (isSelected ? 3 : 2) / scaleRatio;
+  const dotR = 4 / scaleRatio;
+  const fontSize = 12 / scaleRatio;
 
   return (
-    <g
-      style={{ pointerEvents: 'all', cursor: 'pointer' }}
-      onClick={(e) => onClick(e, item)}
-    >
-      {/* Hit area (thicker invisible line) */}
-      <line
-        x1={p1.x} y1={p1.y}
-        x2={p2.x} y2={p2.y}
-        stroke="transparent"
-        strokeWidth={12}
-      />
-      {/* Visible line */}
-      <line
-        x1={p1.x} y1={p1.y}
-        x2={p2.x} y2={p2.y}
-        stroke={isSelected ? '#ffffff' : color}
-        strokeWidth={isSelected ? 3 : 2}
-        strokeOpacity={opacity}
-        markerStart="url(#arrowStart)"
-        markerEnd="url(#arrowEnd)"
-      />
-      {/* Endpoint circles */}
-      <circle cx={p1.x} cy={p1.y} r={4} fill={color} fillOpacity={opacity} />
-      <circle cx={p2.x} cy={p2.y} r={4} fill={color} fillOpacity={opacity} />
-      {/* Selection highlight */}
+    <g style={{ pointerEvents: 'all', cursor: 'pointer' }} onClick={(e) => onClick(e, item)}>
+      <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth={14 / scaleRatio} />
+      <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+        stroke={isSelected ? '#ffffff' : color} strokeWidth={strokeW} strokeOpacity={opacity} />
+      <circle cx={p1.x} cy={p1.y} r={dotR} fill={color} fillOpacity={opacity} />
+      <circle cx={p2.x} cy={p2.y} r={dotR} fill={color} fillOpacity={opacity} />
       {isSelected && (
-        <line
-          x1={p1.x} y1={p1.y}
-          x2={p2.x} y2={p2.y}
-          stroke="#ffffff"
-          strokeWidth={1}
-          strokeDasharray="4 4"
-          opacity={0.6}
-        />
+        <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+          stroke="#ffffff" strokeWidth={1 / scaleRatio}
+          strokeDasharray={`${4 / scaleRatio} ${4 / scaleRatio}`} opacity={0.6} />
       )}
-      {/* Label at midpoint */}
       {item.label && (
-        <text
-          x={midX}
-          y={midY - 8}
-          fill={color}
-          fontSize={12}
-          fontFamily="Arial, sans-serif"
-          fontWeight={isSelected ? 'bold' : 'normal'}
-          textAnchor="middle"
-          opacity={opacity}
-          style={{ pointerEvents: 'none' }}
-        >
+        <text x={midX} y={midY - 8 / scaleRatio}
+          fill={color} fontSize={fontSize} fontFamily="Arial, sans-serif"
+          fontWeight={isSelected ? 'bold' : 'normal'} textAnchor="middle" opacity={opacity}
+          style={{ pointerEvents: 'none' }}>
           {item.label}
         </text>
       )}
@@ -291,9 +211,9 @@ function DimensionLineMarker({ item, color, opacity, isSelected, onClick }: Mark
   );
 }
 
-function AreaPolygonMarker({ item, color, opacity, isSelected, onClick }: MarkerProps) {
+function AreaPolygonMarker({ item, color, opacity, isSelected, onClick, scaleRatio }: MarkerProps) {
   if (item.points.length < 3) {
-    return <DimensionLineMarker item={item} color={color} opacity={opacity} isSelected={isSelected} onClick={onClick} />;
+    return <DimensionLineMarker item={item} color={color} opacity={opacity} isSelected={isSelected} onClick={onClick} scaleRatio={scaleRatio} />;
   }
 
   const pathData = item.points
@@ -306,57 +226,28 @@ function AreaPolygonMarker({ item, color, opacity, isSelected, onClick }: Marker
   const scaleX = meta?.scaleX as number | undefined;
   const scaleUnits = meta?.scaleUnits as string | undefined;
   const areaLabel = item.label || formatArea(area, scaleX, scaleUnits);
+  const strokeW = (isSelected ? 3 : 2) / scaleRatio;
+  const dotR = 3 / scaleRatio;
+  const fontSize = 13 / scaleRatio;
 
   return (
-    <g
-      style={{ pointerEvents: 'all', cursor: 'pointer' }}
-      onClick={(e) => onClick(e, item)}
-    >
-      {/* Fill */}
-      <path
-        d={pathData}
-        fill={color}
-        fillOpacity={opacity * 0.25}
-        stroke={isSelected ? '#ffffff' : color}
-        strokeWidth={isSelected ? 3 : 2}
-        strokeOpacity={opacity}
-        strokeLinejoin="round"
-      />
-      {/* Selection outline */}
+    <g style={{ pointerEvents: 'all', cursor: 'pointer' }} onClick={(e) => onClick(e, item)}>
+      <path d={pathData} fill={color} fillOpacity={opacity * 0.25}
+        stroke={isSelected ? '#ffffff' : color} strokeWidth={strokeW}
+        strokeOpacity={opacity} strokeLinejoin="round" />
       {isSelected && (
-        <path
-          d={pathData}
-          fill="none"
-          stroke="#ffffff"
-          strokeWidth={1.5}
-          strokeDasharray="5 5"
-          opacity={0.7}
-        />
+        <path d={pathData} fill="none" stroke="#ffffff"
+          strokeWidth={1.5 / scaleRatio}
+          strokeDasharray={`${5 / scaleRatio} ${5 / scaleRatio}`} opacity={0.7} />
       )}
-      {/* Vertex dots */}
       {item.points.map((p, i) => (
-        <circle
-          key={i}
-          cx={p.x}
-          cy={p.y}
-          r={3}
-          fill={color}
-          fillOpacity={opacity}
-        />
+        <circle key={i} cx={p.x} cy={p.y} r={dotR} fill={color} fillOpacity={opacity} />
       ))}
-      {/* Area label at centroid */}
-      <text
-        x={centroid.x}
-        y={centroid.y}
-        fill={isSelected ? '#ffffff' : color}
-        fontSize={13}
-        fontFamily="Arial, sans-serif"
-        fontWeight="bold"
-        textAnchor="middle"
-        dominantBaseline="central"
-        opacity={Math.min(opacity + 0.2, 1)}
-        style={{ pointerEvents: 'none' }}
-      >
+      <text x={centroid.x} y={centroid.y}
+        fill={isSelected ? '#ffffff' : color} fontSize={fontSize}
+        fontFamily="Arial, sans-serif" fontWeight="bold" textAnchor="middle"
+        dominantBaseline="central" opacity={Math.min(opacity + 0.2, 1)}
+        style={{ pointerEvents: 'none' }}>
         {areaLabel}
       </text>
     </g>

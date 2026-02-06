@@ -5,7 +5,7 @@
       "id": "measurements",
       "name": "Measurements",
       "color": "#ff0000",
-      "opacity": 0.8,
+      "opacity": 0.85,
       "visible": true,
       "items": [
         {
@@ -14,17 +14,26 @@
           "kind": "dimension_line",
           "label": "Wall A",
           "points": [
-            { "x": 100, "y": 150 },
-            { "x": 400, "y": 150 }
+            { "x": 100, "y": 120 },
+            { "x": 500, "y": 120 }
           ]
         },
         {
-          "id": "dim-2",
+          "id": "pt-1",
           "page": 1,
           "kind": "count_point",
           "label": "Marker 1",
           "points": [
-            { "x": 300, "y": 250 }
+            { "x": 425, "y": 350 }
+          ]
+        },
+        {
+          "id": "pt-2",
+          "page": 1,
+          "kind": "count_point",
+          "label": "Marker 2",
+          "points": [
+            { "x": 690, "y": 300 }
           ]
         }
       ]
@@ -32,7 +41,7 @@
     {
       "id": "areas",
       "name": "Areas",
-      "color": "#00aa00",
+      "color": "#0066ff",
       "opacity": 0.6,
       "visible": true,
       "items": [
@@ -40,13 +49,25 @@
           "id": "area-1",
           "page": 1,
           "kind": "area_polygon",
-          "label": "Office",
+          "label": "Room A",
           "closed": true,
           "points": [
-            { "x": 200, "y": 350 },
-            { "x": 450, "y": 350 },
-            { "x": 450, "y": 550 },
-            { "x": 200, "y": 550 }
+            { "x": 150, "y": 200 },
+            { "x": 550, "y": 200 },
+            { "x": 550, "y": 500 },
+            { "x": 150, "y": 500 }
+          ]
+        },
+        {
+          "id": "area-2",
+          "page": 1,
+          "kind": "area_polygon",
+          "label": "Zone B",
+          "closed": true,
+          "points": [
+            { "x": 600, "y": 550 },
+            { "x": 780, "y": 700 },
+            { "x": 600, "y": 700 }
           ]
         }
       ]

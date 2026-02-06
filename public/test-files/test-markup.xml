@@ -5,70 +5,94 @@
       <Property Class="Text" Name="Name">Page 1</Property>
       <Property Class="Text" Name="GUID">{PAGE-001}</Property>
       <Property Class="Number" Name="OrderIndex">0</Property>
-      <Property Class="Number" Name="ScaleX">29.53</Property>
-      <Property Class="Number" Name="ScaleY">29.53</Property>
-      <Property Class="Text" Name="Scale Units">M</Property>
+      <Property Class="Number" Name="ScaleX">1</Property>
+      <Property Class="Number" Name="ScaleY">1</Property>
+      <Property Class="Text" Name="Scale Units">px</Property>
       <Property Class="Text" Name="Measurement Type">Metric</Property>
     </Properties>
   </Item>
 
-  <Item Class="Dimension" Name="Dimension A" GUID="{DIM-001}">
+  <Item Class="Dimension" Name="Horizontal Line" GUID="{DIM-001}">
     <Properties>
-      <Property Class="Text" Name="Name">Dimension A</Property>
+      <Property Class="Text" Name="Name">Horizontal Line</Property>
       <Property Class="Text" Name="GUID">{DIM-001}</Property>
       <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
       <Property Class="Color" Name="Color">255</Property>
-      <Property Class="Slider" Name="Transparency">196</Property>
+      <Property Class="Slider" Name="Transparency">220</Property>
       <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;Points&gt;&lt;Point X=&quot;200&quot; Y=&quot;300&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+&lt;Points&gt;&lt;Point X=&quot;100&quot; Y=&quot;120&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;500&quot; Y=&quot;120&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
     </Properties>
   </Item>
 
-  <Item Class="Dimension" Name="Scale Line" GUID="{DIM-002}">
+  <Item Class="Dimension" Name="Vertical Line" GUID="{DIM-002}">
     <Properties>
-      <Property Class="Text" Name="Name">Scale Line</Property>
+      <Property Class="Text" Name="Name">Vertical Line</Property>
       <Property Class="Text" Name="GUID">{DIM-002}</Property>
       <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
       <Property Class="Color" Name="Color">32768</Property>
-      <Property Class="Slider" Name="Transparency">200</Property>
+      <Property Class="Slider" Name="Transparency">220</Property>
       <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;Points&gt;&lt;Point X=&quot;100&quot; Y=&quot;200&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;400&quot; Y=&quot;200&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+&lt;Points&gt;&lt;Point X=&quot;100&quot; Y=&quot;120&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;100&quot; Y=&quot;500&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
     </Properties>
   </Item>
 
-  <Item Class="Area" Name="Room 1" GUID="{AREA-001}">
+  <Item Class="Area" Name="Blue Rectangle" GUID="{AREA-001}">
     <Properties>
-      <Property Class="Text" Name="Name">Room 1</Property>
+      <Property Class="Text" Name="Name">Blue Rectangle</Property>
       <Property Class="Text" Name="GUID">{AREA-001}</Property>
       <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
       <Property Class="Color" Name="Color">16711680</Property>
-      <Property Class="Slider" Name="Transparency">150</Property>
+      <Property Class="Slider" Name="Transparency">160</Property>
       <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;Points&gt;&lt;Point X=&quot;150&quot; Y=&quot;400&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;350&quot; Y=&quot;400&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;350&quot; Y=&quot;600&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;150&quot; Y=&quot;600&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+&lt;Points&gt;&lt;Point X=&quot;150&quot; Y=&quot;200&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;550&quot; Y=&quot;200&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;550&quot; Y=&quot;500&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;150&quot; Y=&quot;500&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
     </Properties>
   </Item>
 
-  <Item Class="Count" Name="Point 1" GUID="{CNT-001}">
+  <Item Class="Area" Name="Small Triangle" GUID="{AREA-002}">
     <Properties>
-      <Property Class="Text" Name="Name">Point 1</Property>
+      <Property Class="Text" Name="Name">Small Triangle</Property>
+      <Property Class="Text" Name="GUID">{AREA-002}</Property>
+      <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
+      <Property Class="Color" Name="Color">32768</Property>
+      <Property Class="Slider" Name="Transparency">160</Property>
+      <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;Points&gt;&lt;Point X=&quot;600&quot; Y=&quot;550&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;780&quot; Y=&quot;700&quot; PointType=&quot;Normal&quot;/&gt;&lt;Point X=&quot;600&quot; Y=&quot;700&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+    </Properties>
+  </Item>
+
+  <Item Class="Count" Name="Point A" GUID="{CNT-001}">
+    <Properties>
+      <Property Class="Text" Name="Name">Point A</Property>
       <Property Class="Text" Name="GUID">{CNT-001}</Property>
       <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
       <Property Class="Color" Name="Color">65535</Property>
-      <Property Class="Slider" Name="Transparency">220</Property>
+      <Property Class="Slider" Name="Transparency">240</Property>
       <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;Points&gt;&lt;Point X=&quot;500&quot; Y=&quot;300&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+&lt;Points&gt;&lt;Point X=&quot;425&quot; Y=&quot;350&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
     </Properties>
   </Item>
 
-  <Item Class="Count" Name="Point 2" GUID="{CNT-002}">
+  <Item Class="Count" Name="Point B" GUID="{CNT-002}">
     <Properties>
-      <Property Class="Text" Name="Name">Point 2</Property>
+      <Property Class="Text" Name="Name">Point B</Property>
       <Property Class="Text" Name="GUID">{CNT-002}</Property>
       <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
       <Property Class="Color" Name="Color">65535</Property>
-      <Property Class="Slider" Name="Transparency">220</Property>
+      <Property Class="Slider" Name="Transparency">240</Property>
       <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;Points&gt;&lt;Point X=&quot;550&quot; Y=&quot;350&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+&lt;Points&gt;&lt;Point X=&quot;690&quot; Y=&quot;300&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
+    </Properties>
+  </Item>
+
+  <Item Class="Count" Name="Point C" GUID="{CNT-003}">
+    <Properties>
+      <Property Class="Text" Name="Name">Point C</Property>
+      <Property Class="Text" Name="GUID">{CNT-003}</Property>
+      <Property Class="Text" Name="PageGUID">{PAGE-001}</Property>
+      <Property Class="Color" Name="Color">65535</Property>
+      <Property Class="Slider" Name="Transparency">240</Property>
+      <Property Class="Text" Name="DigitizerData">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;Points&gt;&lt;Point X=&quot;250&quot; Y=&quot;650&quot; PointType=&quot;Normal&quot;/&gt;&lt;/Points&gt;</Property>
     </Properties>
   </Item>
 </Root>

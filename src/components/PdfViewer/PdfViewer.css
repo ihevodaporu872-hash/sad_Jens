@@ -149,6 +149,17 @@
   border-color: #4a6a4a;
 }
 
+.pdf-test-markup-btn {
+  background-color: #2a3a4a;
+  border-color: #3a5a6a;
+  color: #88bbcc;
+}
+
+.pdf-test-markup-btn:hover:not(:disabled) {
+  background-color: #3a4a5a;
+  border-color: #4a6a7a;
+}
+
 .pdf-container {
   flex: 1;
   width: 100%;

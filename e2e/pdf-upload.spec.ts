@@ -34,7 +34,6 @@ test.describe('PDF Viewer - Basic', () => {
 
     // Empty state message
     await expect(page.locator('text=Drop PDF + markup files here')).toBeVisible();
-    await expect(page.locator('text=Supports XML and JSON')).toBeVisible();
 
     await page.screenshot({
       path: 'e2e/screenshots/pdf-viewer-initial.png',
