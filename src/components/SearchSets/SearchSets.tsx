@@ -145,12 +145,20 @@ export function SearchSets({
 
   useEffect(() => {
     if (!supabaseModelId) return;
-    setLoading(true);
-    supabaseApi
-      .getSearchSets(supabaseModelId)
-      .then((sets) => setSearchSets(sets))
-      .catch((err) => console.warn('[SearchSets] Failed to load:', err))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const fetchSets = async () => {
+      setLoading(true);
+      try {
+        const sets = await supabaseApi.getSearchSets(supabaseModelId);
+        if (!cancelled) setSearchSets(sets);
+      } catch (err) {
+        console.warn('[SearchSets] Failed to load:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchSets();
+    return () => { cancelled = true; };
   }, [supabaseModelId]);
 
   // ── Build criteria from editor state ──────────────────────────
