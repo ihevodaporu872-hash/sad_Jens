@@ -42,6 +42,9 @@ export function ModelViewerPage() {
   const [elementIndex, setElementIndex] = useState<ElementIndexEntry[]>([]);
   const [hasModel, setHasModel] = useState(false);
 
+  // Box select state
+  const [boxSelectActive, setBoxSelectActive] = useState(false);
+
   // Spatial tree for SelectionTree
   const [spatialTree, setSpatialTree] = useState<DbSpatialNode[]>([]);
 
