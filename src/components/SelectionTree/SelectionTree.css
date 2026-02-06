@@ -1,0 +1,164 @@
+.selection-tree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0f172a;
+  color: #cbd5e1;
+}
+
+.st-header {
+  padding: 0.625rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  border-bottom: 1px solid #334155;
+  flex-shrink: 0;
+}
+
+.st-tree-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.25rem 0;
+}
+
+/* Scrollbar styles */
+.st-tree-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.st-tree-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.st-tree-container::-webkit-scrollbar-thumb {
+  background-color: #334155;
+  border-radius: 3px;
+}
+
+.st-tree-container::-webkit-scrollbar-thumb:hover {
+  background-color: #475569;
+}
+
+/* Node row */
+.st-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  cursor: default;
+  user-select: none;
+  transition: background-color 0.1s;
+  min-height: 26px;
+}
+
+.st-node:hover {
+  background-color: #1e293b;
+}
+
+.st-node-selected {
+  background-color: #1e293b;
+  outline: 1px solid #a5b4fc;
+  outline-offset: -1px;
+}
+
+.st-node-selected .st-label {
+  color: #a5b4fc;
+}
+
+/* Arrow button */
+.st-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 0.5rem;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s, color 0.15s;
+  transform: rotate(0deg);
+}
+
+.st-arrow:hover {
+  color: #cbd5e1;
+}
+
+.st-arrow-expanded {
+  transform: rotate(90deg);
+}
+
+.st-arrow-hidden {
+  visibility: hidden;
+}
+
+/* Folder / file icon */
+.st-icon {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  width: 18px;
+  text-align: center;
+}
+
+/* Node label */
+.st-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.st-label:hover {
+  color: #f1f5f9;
+}
+
+/* Element count badge */
+.st-badge {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0 6px;
+  line-height: 1.5;
+  min-width: 20px;
+  text-align: center;
+}
+
+.st-node-selected .st-badge {
+  background-color: #312e81;
+  border-color: #4338ca;
+  color: #a5b4fc;
+}
+
+/* Children container */
+.st-children {
+  /* no extra styling needed, depth handled by padding */
+}
+
+/* Empty state */
+.st-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  font-size: 0.75rem;
+  color: #64748b;
+  text-align: center;
+}

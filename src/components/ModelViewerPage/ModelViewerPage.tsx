@@ -4,7 +4,9 @@ import { PropertiesPanel } from '../PropertiesPanel';
 import { WorksetsWidget } from '../WorksetsWidget';
 import { SmartFilter } from '../SmartFilter';
 import { Quantification } from '../Quantification';
+import { SelectionTree } from '../SelectionTree';
 import { ElementActions } from '../ElementActions';
+import { SectionPlanes } from '../SectionPlanes';
 import { getElementProperties } from '../../utils/ifcProperties';
 import * as supabaseApi from '../../services/supabaseService';
 import type {
@@ -14,9 +16,10 @@ import type {
   Workset,
   ElementIndexEntry,
 } from '../../types/ifc';
+import type { DbSpatialNode } from '../../lib/supabase';
 import './ModelViewerPage.css';
 
-type LeftTab = 'worksets' | 'filter' | 'quantification';
+type LeftTab = 'worksets' | 'filter' | 'quantification' | 'tree';
 
 export function ModelViewerPage() {
   const viewerRef = useRef<IfcViewerRef>(null);
@@ -38,6 +41,9 @@ export function ModelViewerPage() {
   // Element index for SmartFilter & Quantification
   const [elementIndex, setElementIndex] = useState<ElementIndexEntry[]>([]);
   const [hasModel, setHasModel] = useState(false);
+
+  // Spatial tree for SelectionTree
+  const [spatialTree, setSpatialTree] = useState<DbSpatialNode[]>([]);
 
   // Supabase model ID — loaded from DB or fallback to first available model
   const [supabaseModelId, setSupabaseModelId] = useState<string | null>(null);
@@ -71,6 +77,15 @@ export function ModelViewerPage() {
           console.log(`[Supabase] Loaded element index: ${index.length} entries`);
         } catch (err) {
           console.warn('[Supabase] Failed to load element index:', err);
+        }
+
+        // Load spatial tree from Supabase
+        try {
+          const tree = await supabaseApi.getSpatialTree(model.id);
+          setSpatialTree(tree);
+          console.log(`[Supabase] Loaded spatial tree: ${tree.length} nodes`);
+        } catch (err) {
+          console.warn('[Supabase] Failed to load spatial tree:', err);
         }
       } else {
         console.warn('[Supabase] No models found in database — using client-side indexing');
@@ -193,6 +208,12 @@ export function ModelViewerPage() {
   // ── Quantification handlers ──────────────────────────────────
 
   const handleQuantSelectElements = useCallback((expressIds: number[]) => {
+    viewerRef.current?.selectElements(expressIds);
+  }, []);
+
+  // ── SelectionTree handlers ─────────────────────────────────
+
+  const handleTreeSelectElements = useCallback((expressIds: number[]) => {
     viewerRef.current?.selectElements(expressIds);
   }, []);
 
@@ -378,6 +399,12 @@ export function ModelViewerPage() {
             >
               Quant
             </button>
+            <button
+              className={`sidebar-tab ${leftTab === 'tree' ? 'active' : ''}`}
+              onClick={() => setLeftTab('tree')}
+            >
+              Tree
+            </button>
           </div>
 
           {/* Tab content */}
@@ -409,6 +436,13 @@ export function ModelViewerPage() {
               onSelectElements={handleQuantSelectElements}
             />
           )}
+          {leftTab === 'tree' && (
+            <SelectionTree
+              spatialTree={spatialTree}
+              elementIndex={elementIndex}
+              onSelectElements={handleTreeSelectElements}
+            />
+          )}
         </aside>
       )}
 
@@ -431,6 +465,7 @@ export function ModelViewerPage() {
           onElementSelected={handleElementSelected}
           onSelectionChanged={handleSelectionChanged}
         />
+        {hasModel && <SectionPlanes viewerRef={viewerRef} />}
       </main>
 
       {/* Right sidebar: Properties */}
