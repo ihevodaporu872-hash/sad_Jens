@@ -28,7 +28,8 @@ const LINE_WIDTHS = [2, 3, 5] as const;
 
 // ── Component ────────────────────────────────────────────────────
 
-export function Annotations({ viewerRef: _viewerRef, active, onClose, className }: AnnotationsProps) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function Annotations({ viewerRef, active, onClose, className }: AnnotationsProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
