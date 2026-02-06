@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Univer, LocaleType, UniverInstanceType, IWorkbookData, ICellData, IObjectMatrixPrimitiveType } from '@univerjs/core';
-import { defaultTheme } from '@univerjs/design';
-import { UniverSheetsPlugin } from '@univerjs/sheets';
-import { UniverSheetsUIPlugin } from '@univerjs/sheets-ui';
-import { UniverUIPlugin } from '@univerjs/ui';
-import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
-import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
+import { createUniver, IWorkbookData, ICellData, IObjectMatrixPrimitiveType, LocaleType, mergeLocales } from '@univerjs/presets';
+import { UniverSheetsCorePreset } from '@univerjs/presets/preset-sheets-core';
+import sheetsEnUS from '@univerjs/presets/preset-sheets-core/locales/en-US';
 import * as XLSX from 'xlsx';
 
-// Univer CSS imports
-import '@univerjs/design/lib/index.css';
-import '@univerjs/ui/lib/index.css';
-import '@univerjs/sheets-ui/lib/index.css';
-
+import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import './ExcelViewer.css';
 
 interface LoadingState {
@@ -49,9 +41,8 @@ function convertSheetToUniverCellData(worksheet: XLSX.WorkSheet): IObjectMatrixP
     return cellData;
   }
 
-  // Iterate through all cells in the worksheet
   for (const cellAddress in worksheet) {
-    if (cellAddress.startsWith('!')) continue; // Skip special keys
+    if (cellAddress.startsWith('!')) continue;
 
     const cell = worksheet[cellAddress] as XLSX.CellObject;
     const { row, col } = parseCellAddress(cellAddress);
@@ -60,26 +51,20 @@ function convertSheetToUniverCellData(worksheet: XLSX.WorkSheet): IObjectMatrixP
       cellData[row] = {};
     }
 
-    // Convert cell value to Univer format
     const univerCell: ICellData = {};
 
     if (cell.t === 'n') {
-      // Number
       univerCell.v = cell.v as number;
     } else if (cell.t === 'b') {
-      // Boolean
       univerCell.v = cell.v ? 1 : 0;
     } else if (cell.t === 's') {
-      // String
       univerCell.v = cell.v as string;
     } else if (cell.t === 'd') {
-      // Date
       univerCell.v = cell.w || String(cell.v);
     } else if (cell.v !== undefined) {
       univerCell.v = String(cell.v);
     }
 
-    // Preserve formula if present
     if (cell.f) {
       univerCell.f = cell.f;
     }
@@ -122,9 +107,12 @@ function convertXLSXToUniver(workbook: XLSX.WorkBook): IWorkbookData {
   };
 }
 
+let containerIdCounter = 0;
+
 export function ExcelViewer() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const univerRef = useRef<Univer | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const univerInstanceRef = useRef<{ univerAPI: ReturnType<typeof createUniver>['univerAPI'] } | null>(null);
+  const univerContainerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loadingState, setLoadingState] = useState<LoadingState>({
     isLoading: false,
@@ -134,46 +122,69 @@ export function ExcelViewer() {
   const [fileName, setFileName] = useState<string>('');
   const [error, setError] = useState<string>('');
 
-  // Initialize Univer with empty workbook
+  // Initialize Univer with presets API
   const initializeUniver = useCallback((workbookData?: IWorkbookData) => {
-    if (!containerRef.current) return;
+    if (!wrapperRef.current) return;
 
-    // Dispose previous instance if exists
-    if (univerRef.current) {
-      univerRef.current.dispose();
-      univerRef.current = null;
+    // Dispose previous instance
+    if (univerInstanceRef.current) {
+      try {
+        univerInstanceRef.current.univerAPI.dispose();
+      } catch {
+        // Ignore dispose errors
+      }
+      univerInstanceRef.current = null;
     }
 
-    const univer = new Univer({
-      theme: defaultTheme,
-      locale: LocaleType.EN_US,
-    });
+    // Remove old Univer container
+    if (univerContainerRef.current && univerContainerRef.current.parentNode) {
+      univerContainerRef.current.parentNode.removeChild(univerContainerRef.current);
+      univerContainerRef.current = null;
+    }
 
-    univerRef.current = univer;
+    // Create a fresh DOM element with unique ID
+    const containerId = `univer-container-${++containerIdCounter}`;
+    const univerDiv = document.createElement('div');
+    univerDiv.id = containerId;
+    univerDiv.style.width = '100%';
+    univerDiv.style.height = '100%';
+    wrapperRef.current.appendChild(univerDiv);
+    univerContainerRef.current = univerDiv;
 
-    univer.registerPlugin(UniverRenderEnginePlugin);
-    univer.registerPlugin(UniverFormulaEnginePlugin);
-    univer.registerPlugin(UniverUIPlugin, {
-      container: containerRef.current,
-    });
-    univer.registerPlugin(UniverSheetsPlugin);
-    univer.registerPlugin(UniverSheetsUIPlugin);
-
-    const defaultWorkbook: IWorkbookData = workbookData || {
-      id: 'workbook-1',
-      name: 'New Workbook',
-      sheetOrder: ['sheet-1'],
-      sheets: {
-        'sheet-1': {
-          id: 'sheet-1',
-          name: 'Sheet 1',
-          rowCount: 100,
-          columnCount: 26,
+    try {
+      const { univerAPI } = createUniver({
+        locale: LocaleType.EN_US,
+        locales: {
+          [LocaleType.EN_US]: mergeLocales(sheetsEnUS),
         },
-      },
-    };
+        presets: [
+          UniverSheetsCorePreset({
+            container: containerId,
+          }),
+        ],
+      });
 
-    univer.createUnit(UniverInstanceType.UNIVER_SHEET, defaultWorkbook);
+      // Create workbook using the API (as per documentation)
+      const defaultWorkbook: IWorkbookData = workbookData || {
+        id: 'workbook-1',
+        name: 'New Workbook',
+        sheetOrder: ['sheet-1'],
+        sheets: {
+          'sheet-1': {
+            id: 'sheet-1',
+            name: 'Sheet 1',
+            rowCount: 100,
+            columnCount: 26,
+          },
+        },
+      };
+
+      univerAPI.createWorkbook(defaultWorkbook);
+      univerInstanceRef.current = { univerAPI };
+    } catch (err) {
+      console.error('Failed to initialize Univer:', err);
+      setError(err instanceof Error ? err.message : 'Failed to initialize spreadsheet engine');
+    }
   }, []);
 
   // Load XLSX file
@@ -182,32 +193,27 @@ export function ExcelViewer() {
     setLoadingState({ isLoading: true, progress: 10, message: 'Reading file...' });
 
     try {
-      // Read file as ArrayBuffer
       const arrayBuffer = await file.arrayBuffer();
       setLoadingState({ isLoading: true, progress: 30, message: 'Parsing XLSX...' });
 
-      // Parse XLSX using SheetJS
       const workbook = XLSX.read(arrayBuffer, {
         type: 'array',
         cellFormula: true,
-        cellStyles: false, // Disable styles for performance with large files
+        cellStyles: false,
         cellDates: true,
       });
 
       setLoadingState({ isLoading: true, progress: 60, message: 'Converting to Univer format...' });
 
-      // Convert to Univer format
       const univerData = convertXLSXToUniver(workbook);
 
       setLoadingState({ isLoading: true, progress: 80, message: 'Rendering spreadsheet...' });
 
-      // Initialize Univer with converted data
       initializeUniver(univerData);
 
       setFileName(file.name);
       setLoadingState({ isLoading: true, progress: 100, message: 'Complete!' });
 
-      // Hide loading after a short delay
       setTimeout(() => {
         setLoadingState({ isLoading: false, progress: 0, message: '' });
       }, 500);
@@ -245,7 +251,7 @@ export function ExcelViewer() {
     event.stopPropagation();
   }, []);
 
-  // Handle load from URL
+  // Load from URL
   const loadFromUrl = useCallback(async (url: string) => {
     setError('');
     setLoadingState({ isLoading: true, progress: 5, message: 'Fetching file...' });
@@ -257,8 +263,8 @@ export function ExcelViewer() {
       }
 
       const blob = await response.blob();
-      const fileName = url.split('/').pop() || 'downloaded.xlsx';
-      const file = new File([blob], fileName, { type: blob.type });
+      const name = url.split('/').pop() || 'downloaded.xlsx';
+      const file = new File([blob], name, { type: blob.type });
 
       await loadXLSXFile(file);
     } catch (err) {
@@ -268,7 +274,7 @@ export function ExcelViewer() {
     }
   }, [loadXLSXFile]);
 
-  // Load test file on button click
+  // Load test file
   const loadTestFile = useCallback(() => {
     loadFromUrl('/test-files/test.xlsx');
   }, [loadFromUrl]);
@@ -278,9 +284,13 @@ export function ExcelViewer() {
     initializeUniver();
 
     return () => {
-      if (univerRef.current) {
-        univerRef.current.dispose();
-        univerRef.current = null;
+      if (univerInstanceRef.current) {
+        try {
+          univerInstanceRef.current.univerAPI.dispose();
+        } catch {
+          // Ignore
+        }
+        univerInstanceRef.current = null;
       }
     };
   }, [initializeUniver]);
@@ -340,7 +350,7 @@ export function ExcelViewer() {
           </div>
         )}
       </div>
-      <div ref={containerRef} className="excel-container" data-testid="excel-container" />
+      <div ref={wrapperRef} className="excel-container" data-testid="excel-container" />
     </div>
   );
 }

@@ -1,9 +1,12 @@
-import { useState, useCallback, useRef, type DragEvent, type ChangeEvent } from 'react';
-import { EmbedPDF, useEmbed, type EmbedEvent } from '@simplepdf';
+import { useState, useCallback, useRef, useEffect, type DragEvent, type ChangeEvent } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
 import './PdfViewer.css';
 
-// Re-export types from SimplePDF for consumers
-export type { EmbedEvent };
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 // Helper function to format file size
 function formatFileSize(bytes: number): string {
@@ -21,96 +24,110 @@ interface DocumentInfo {
   totalPages: number;
 }
 
-interface PdfViewerProps {
-  /** URL to the PDF document to display */
-  documentURL?: string;
-  /** Optional company identifier for SimplePDF */
-  companyIdentifier?: string;
-  /** Locale for the editor interface */
-  locale?: 'en' | 'de' | 'es' | 'fr' | 'it' | 'pt' | 'nl';
-  /** Callback for PDF events */
-  onEmbedEvent?: (event: EmbedEvent) => void;
-  /** Callback when an error occurs */
-  onError?: (error: string) => void;
-  /** Callback when a document is loaded */
-  onDocumentLoaded?: (name: string) => void;
-}
-
-export function PdfViewer({
-  documentURL,
-  companyIdentifier,
-  locale = 'en',
-  onEmbedEvent,
-  onError,
-  onDocumentLoaded,
-}: PdfViewerProps) {
-  const { embedRef, actions } = useEmbed();
+export function PdfViewer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [editorReady, setEditorReady] = useState(false);
   const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
-
-  const setErrorWithCallback = useCallback((errorMessage: string) => {
-    setError(errorMessage);
-    onError?.(errorMessage);
-  }, [onError]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [scale, setScale] = useState(1.5);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Convert file to data URL
-  const fileToDataUrl = useCallback((file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          resolve(reader.result);
-        } else {
-          reject(new Error('Failed to read file'));
-        }
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
+  // Render a single page to canvas
+  const renderPage = useCallback(async (pdf: pdfjsLib.PDFDocumentProxy, pageNum: number, container: HTMLDivElement, renderScale: number) => {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: renderScale });
+
+    const pageDiv = document.createElement('div');
+    pageDiv.className = 'pdf-page';
+    pageDiv.setAttribute('data-page-number', String(pageNum));
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    canvas.style.display = 'block';
+    canvas.style.margin = '0 auto 16px auto';
+
+    pageDiv.appendChild(canvas);
+
+    // Page number label
+    const label = document.createElement('div');
+    label.className = 'pdf-page-label';
+    label.textContent = `Page ${pageNum}`;
+    pageDiv.appendChild(label);
+
+    container.appendChild(pageDiv);
+
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+    }).promise;
   }, []);
+
+  // Render all pages
+  const renderAllPages = useCallback(async (pdf: pdfjsLib.PDFDocumentProxy, renderScale: number) => {
+    if (!containerRef.current) return;
+
+    // Clear previous content
+    containerRef.current.innerHTML = '';
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      await renderPage(pdf, i, containerRef.current, renderScale);
+    }
+  }, [renderPage]);
+
+  // Load PDF from ArrayBuffer
+  const loadPdfData = useCallback(async (data: ArrayBuffer, fileName: string, fileSize: number) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Dispose previous document
+      if (pdfDocRef.current) {
+        await pdfDocRef.current.destroy();
+        pdfDocRef.current = null;
+      }
+
+      const pdf = await pdfjsLib.getDocument({ data }).promise;
+      pdfDocRef.current = pdf;
+
+      setDocumentInfo({
+        name: fileName,
+        size: fileSize,
+        currentPage: 1,
+        totalPages: pdf.numPages,
+      });
+      setCurrentPage(1);
+
+      await renderAllPages(pdf, scale);
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Failed to load PDF:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load PDF file');
+      setIsLoading(false);
+    }
+  }, [scale, renderAllPages]);
 
   // Load PDF file
   const loadPdfFile = useCallback(async (file: File) => {
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
-      setErrorWithCallback('Please select a valid PDF file');
+      setError('Please select a valid PDF file');
       return;
     }
 
-    setIsLoading(true);
-    clearError();
-
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      const result = await actions.loadDocument({ dataUrl, name: file.name });
-
-      if (result.success) {
-        setDocumentInfo({
-          name: file.name,
-          size: file.size,
-          currentPage: 1,
-          totalPages: 0,
-        });
-        onDocumentLoaded?.(file.name);
-      } else {
-        setErrorWithCallback(result.error?.message || 'Failed to load PDF');
-      }
-    } catch (err) {
-      console.error('Failed to load PDF:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load PDF file';
-      setErrorWithCallback(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [actions, fileToDataUrl, setErrorWithCallback, clearError, onDocumentLoaded]);
+    const arrayBuffer = await file.arrayBuffer();
+    await loadPdfData(arrayBuffer, file.name, file.size);
+  }, [loadPdfData]);
 
   // Handle file upload via input
   const handleFileUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
@@ -118,7 +135,6 @@ export function PdfViewer({
     if (file) {
       await loadPdfFile(file);
     }
-    // Reset input to allow re-uploading same file
     event.target.value = '';
   }, [loadPdfFile]);
 
@@ -142,37 +158,65 @@ export function PdfViewer({
 
     const files = event.dataTransfer.files;
     if (files.length > 0) {
-      const file = files[0];
-      await loadPdfFile(file);
+      await loadPdfFile(files[0]);
     }
   }, [loadPdfFile]);
-
-  const handleEmbedEvent = useCallback((event: EmbedEvent) => {
-    console.log('PDF event:', event.type, event.data);
-
-    if (event.type === 'EDITOR_READY') {
-      setEditorReady(true);
-    }
-
-    if (event.type === 'DOCUMENT_LOADED') {
-      setIsLoading(false);
-    }
-
-    if (event.type === 'PAGE_FOCUSED') {
-      const { current_page, total_pages } = event.data;
-      setDocumentInfo((prev) => prev ? {
-        ...prev,
-        currentPage: current_page,
-        totalPages: total_pages,
-      } : null);
-    }
-
-    onEmbedEvent?.(event);
-  }, [onEmbedEvent]);
 
   // Handle click on upload button
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
+  }, []);
+
+  // Load test file
+  const loadTestFile = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/test-files/test.pdf');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      await loadPdfData(arrayBuffer, 'test.pdf', arrayBuffer.byteLength);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load test file');
+      setIsLoading(false);
+    }
+  }, [loadPdfData]);
+
+  // Navigation
+  const goToPage = useCallback((pageNum: number) => {
+    if (!containerRef.current || !documentInfo) return;
+    const clampedPage = Math.max(1, Math.min(pageNum, documentInfo.totalPages));
+    setCurrentPage(clampedPage);
+    const pageEl = containerRef.current.querySelector(`[data-page-number="${clampedPage}"]`);
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [documentInfo]);
+
+  // Zoom
+  const handleZoomIn = useCallback(async () => {
+    const newScale = Math.min(scale + 0.25, 4);
+    setScale(newScale);
+    if (pdfDocRef.current) {
+      await renderAllPages(pdfDocRef.current, newScale);
+    }
+  }, [scale, renderAllPages]);
+
+  const handleZoomOut = useCallback(async () => {
+    const newScale = Math.max(scale - 0.25, 0.5);
+    setScale(newScale);
+    if (pdfDocRef.current) {
+      await renderAllPages(pdfDocRef.current, newScale);
+    }
+  }, [scale, renderAllPages]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfDocRef.current) {
+        pdfDocRef.current.destroy();
+      }
+    };
   }, []);
 
   return (
@@ -180,27 +224,50 @@ export function PdfViewer({
       <div className="pdf-toolbar">
         <div className="pdf-toolbar-header">
           <h2>{documentInfo?.name || 'PDF Viewer'}</h2>
-          <p>Powered by SimplePDF - View, edit, and sign PDF documents</p>
+          <p>View PDF documents locally with pdf.js</p>
         </div>
         <div className="pdf-toolbar-actions">
           {documentInfo && (
             <div className="pdf-document-info">
-              {documentInfo.totalPages > 0 && (
-                <span className="pdf-page-info">
-                  Page {documentInfo.currentPage} / {documentInfo.totalPages}
-                </span>
-              )}
+              <span className="pdf-page-info">
+                Page {currentPage} / {documentInfo.totalPages}
+              </span>
               <span className="pdf-size-info">
                 {formatFileSize(documentInfo.size)}
               </span>
             </div>
           )}
+          {documentInfo && (
+            <>
+              <button className="pdf-btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+                Prev
+              </button>
+              <button className="pdf-btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= documentInfo.totalPages}>
+                Next
+              </button>
+              <button className="pdf-btn" onClick={handleZoomOut} disabled={scale <= 0.5}>
+                -
+              </button>
+              <span style={{ color: '#e0e0e0', fontSize: '0.8rem' }}>{Math.round(scale * 100)}%</span>
+              <button className="pdf-btn" onClick={handleZoomIn} disabled={scale >= 4}>
+                +
+              </button>
+            </>
+          )}
           <button
             className="pdf-upload-btn"
             onClick={handleUploadClick}
-            disabled={!editorReady || isLoading}
+            disabled={isLoading}
           >
             Upload PDF
+          </button>
+          <button
+            className="pdf-btn"
+            onClick={loadTestFile}
+            disabled={isLoading}
+            data-testid="load-test-pdf"
+          >
+            Load Test PDF
           </button>
           <input
             ref={fileInputRef}
@@ -208,7 +275,7 @@ export function PdfViewer({
             accept=".pdf,application/pdf"
             onChange={handleFileUpload}
             className="pdf-file-input"
-            disabled={!editorReady || isLoading}
+            disabled={isLoading}
           />
         </div>
       </div>
@@ -218,15 +285,7 @@ export function PdfViewer({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <EmbedPDF
-          ref={embedRef}
-          mode="inline"
-          style={{ width: '100%', height: '100%' }}
-          documentURL={documentURL}
-          companyIdentifier={companyIdentifier}
-          locale={locale}
-          onEmbedEvent={handleEmbedEvent}
-        />
+        <div ref={containerRef} className="pdf-pages-container" data-testid="pdf-pages-container" />
 
         {isLoading && (
           <div className="pdf-overlay">
@@ -247,10 +306,22 @@ export function PdfViewer({
             <p>Drop PDF file here</p>
           </div>
         )}
+
+        {!documentInfo && !isLoading && !error && (
+          <div className="pdf-overlay">
+            <div style={{ textAlign: 'center' }}>
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.5 }}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+              <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Drop a PDF file here</p>
+              <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>or click "Upload PDF" / "Load Test PDF" button above</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-// Export the useEmbed hook actions for programmatic control
-export { useEmbed };

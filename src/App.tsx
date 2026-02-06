@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { TabNavigation } from './components/Layout/TabNavigation';
 import { IfcViewer } from './components/IfcViewer';
 import { CadViewer } from './components/CadViewer';
 import { PdfViewer } from './components/PdfViewer/PdfViewer';
@@ -9,13 +10,18 @@ import './App.css';
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/ifc" replace />} />
-        <Route path="/ifc" element={<IfcViewer />} />
-        <Route path="/cad" element={<CadViewer />} />
-        <Route path="/pdf" element={<PdfViewer />} />
-        <Route path="/excel" element={<ExcelViewer />} />
-      </Routes>
+      <div className="app">
+        <TabNavigation />
+        <div className="main-content">
+          <Routes>
+            <Route path="/" element={<Navigate to="/ifc" replace />} />
+            <Route path="/ifc" element={<IfcViewer />} />
+            <Route path="/cad" element={<CadViewer />} />
+            <Route path="/pdf" element={<PdfViewer />} />
+            <Route path="/excel" element={<ExcelViewer />} />
+          </Routes>
+        </div>
+      </div>
     </BrowserRouter>
   );
 }
