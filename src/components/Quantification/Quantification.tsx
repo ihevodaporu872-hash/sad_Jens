@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import type { ElementIndexEntry, QuantificationRow } from '../../types/ifc';
 import './Quantification.css';
 
@@ -127,10 +128,53 @@ export function Quantification({
 
   const fmtNum = (n: number) => (n === 0 ? '—' : n.toFixed(2));
 
+  const handleExportXlsx = useCallback(() => {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1 — Summary (grouped table)
+    const summaryData = rows.map((row) => ({
+      groupKey: row.groupKey,
+      count: row.count,
+      totalVolume: Number(row.totalVolume.toFixed(4)),
+      totalArea: Number(row.totalArea.toFixed(4)),
+    }));
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+    // Sheet 2 — Details (individual elements)
+    const detailsData = elementIndex.map((el) => ({
+      expressId: el.expressId,
+      ifcType: el.ifcType,
+      name: el.name,
+      floor: el.floor,
+      material: el.material,
+      volume: Number(el.volume.toFixed(4)),
+      area: Number(el.area.toFixed(4)),
+      height: Number(el.height.toFixed(4)),
+      length: Number(el.length.toFixed(4)),
+    }));
+    const wsDetails = XLSX.utils.json_to_sheet(detailsData);
+    XLSX.utils.book_append_sheet(wb, wsDetails, 'Details');
+
+    // Build filename: quantification-{groupBy}-{YYYY-MM-DD}.xlsx
+    const date = new Date().toISOString().slice(0, 10);
+    const fileName = `quantification-${groupBy}-${date}.xlsx`;
+
+    XLSX.writeFile(wb, fileName);
+  }, [rows, elementIndex, groupBy]);
+
   return (
     <div className={`quantification ${className || ''}`}>
       <div className="quant-header">
         <h3>Quantification</h3>
+        <button
+          className="quant-export-btn"
+          onClick={handleExportXlsx}
+          disabled={rows.length === 0}
+          title="Export to XLSX"
+        >
+          Export XLSX
+        </button>
       </div>
 
       <div className="quant-controls">

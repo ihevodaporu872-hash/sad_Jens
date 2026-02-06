@@ -8,6 +8,9 @@
 }
 
 .quant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid #334155;
   flex-shrink: 0;
@@ -161,4 +164,37 @@
 .quant-table tfoot {
   position: sticky;
   bottom: 0;
+}
+
+/* Export button */
+.quant-export-btn {
+  padding: 0.25rem 0.625rem;
+  background-color: #334155;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.quant-export-btn:hover {
+  background-color: #475569;
+  border-color: #646cff;
+  color: #f8fafc;
+}
+
+.quant-export-btn:active {
+  background-color: #646cff;
+  color: white;
+}
+
+.quant-export-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background-color: #334155;
+  border-color: #475569;
+  color: #94a3b8;
 }
