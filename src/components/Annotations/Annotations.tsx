@@ -28,7 +28,7 @@ const LINE_WIDTHS = [2, 3, 5] as const;
 
 // ── Component ────────────────────────────────────────────────────
 
-export function Annotations({ viewerRef, active, onClose, className }: AnnotationsProps) {
+export function Annotations({ viewerRef: _viewerRef, active, onClose, className }: AnnotationsProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -72,42 +72,9 @@ export function Annotations({ viewerRef, active, onClose, className }: Annotatio
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [active, resizeCanvas]);
 
-  // ── Redraw all annotations ────────────────────────────────────
-
-  const redraw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-
-    for (const ann of annotations) {
-      switch (ann.type) {
-        case 'freehand':
-          drawFreehand(ctx, ann);
-          break;
-        case 'cloud':
-          drawCloud(ctx, ann);
-          break;
-        case 'arrow':
-          drawArrow(ctx, ann);
-          break;
-        case 'text':
-          drawText(ctx, ann);
-          break;
-      }
-    }
-  }, [annotations]);
-
-  useEffect(() => {
-    if (active) redraw();
-  }, [active, redraw]);
-
   // ── Drawing helpers ───────────────────────────────────────────
 
-  function drawFreehand(ctx: CanvasRenderingContext2D, ann: AnnotationEntry) {
+  const drawFreehand = useCallback((ctx: CanvasRenderingContext2D, ann: AnnotationEntry) => {
     if (ann.points.length < 2) return;
     ctx.beginPath();
     ctx.strokeStyle = ann.color;
@@ -119,9 +86,9 @@ export function Annotations({ viewerRef, active, onClose, className }: Annotatio
       ctx.lineTo(ann.points[i].x, ann.points[i].y);
     }
     ctx.stroke();
-  }
+  }, []);
 
-  function drawCloud(ctx: CanvasRenderingContext2D, ann: AnnotationEntry) {
+  const drawCloud = useCallback((ctx: CanvasRenderingContext2D, ann: AnnotationEntry) => {
     if (ann.points.length < 2) return;
     const [p0, p1] = ann.points;
     const x = Math.min(p0.x, p1.x);
@@ -190,9 +157,9 @@ export function Annotations({ viewerRef, active, onClose, className }: Annotatio
       ctx.quadraticCurveTo(cpx, cpy, b.x, b.y);
     }
     ctx.stroke();
-  }
+  }, []);
 
-  function drawArrow(ctx: CanvasRenderingContext2D, ann: AnnotationEntry) {
+  const drawArrow = useCallback((ctx: CanvasRenderingContext2D, ann: AnnotationEntry) => {
     if (ann.points.length < 2) return;
     const [start, end] = ann.points;
 
@@ -223,9 +190,9 @@ export function Annotations({ viewerRef, active, onClose, className }: Annotatio
     );
     ctx.closePath();
     ctx.fill();
-  }
+  }, []);
 
-  function drawText(ctx: CanvasRenderingContext2D, ann: AnnotationEntry) {
+  const drawText = useCallback((ctx: CanvasRenderingContext2D, ann: AnnotationEntry) => {
     if (!ann.text || ann.points.length === 0) return;
     const { x, y } = ann.points[0];
     const fontSize = 14;
@@ -261,7 +228,40 @@ export function Annotations({ viewerRef, active, onClose, className }: Annotatio
     ctx.fillStyle = ann.color;
     ctx.textBaseline = 'bottom';
     ctx.fillText(ann.text, x, y);
-  }
+  }, []);
+
+  // ── Redraw all annotations ────────────────────────────────────
+
+  const redraw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+    for (const ann of annotations) {
+      switch (ann.type) {
+        case 'freehand':
+          drawFreehand(ctx, ann);
+          break;
+        case 'cloud':
+          drawCloud(ctx, ann);
+          break;
+        case 'arrow':
+          drawArrow(ctx, ann);
+          break;
+        case 'text':
+          drawText(ctx, ann);
+          break;
+      }
+    }
+  }, [annotations, drawFreehand, drawCloud, drawArrow, drawText]);
+
+  useEffect(() => {
+    if (active) redraw();
+  }, [active, redraw]);
 
   // Preview drawing (for cloud rectangle and arrow while dragging)
   function drawPreview(ctx: CanvasRenderingContext2D, endPt: { x: number; y: number }) {
