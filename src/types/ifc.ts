@@ -136,6 +136,42 @@ export interface IfcViewerRef {
   setBoxSelectMode: (enabled: boolean) => void;
 }
 
+// ── Search Sets (Navisworks-style saved search criteria) ──
+
+export interface SearchCriteria {
+  ifcTypes?: string[];
+  floors?: string[];
+  materials?: string[];
+  textQuery?: string;
+  propFilters?: { property: string; operator: 'equals' | 'contains' | 'gt' | 'lt'; value: string }[];
+}
+
+export interface SearchSet {
+  id: string;
+  modelId: string;
+  name: string;
+  criteria: SearchCriteria;
+  createdAt?: string;
+}
+
+// ── Viewpoints (Navisworks-style saved viewpoints) ──
+
+export interface ViewpointData {
+  name: string;
+  cameraPosition: { x: number; y: number; z: number };
+  cameraTarget: { x: number; y: number; z: number };
+  hiddenExpressIds: number[];
+  coloredElements: { expressIds: number[]; color: string }[];
+  clippingPlanes: { axis: 'x' | 'y' | 'z'; constant: number }[];
+  thumbnail?: string;
+}
+
+export interface Viewpoint extends ViewpointData {
+  id: string;
+  modelId: string;
+  createdAt?: string;
+}
+
 // Viewer props
 export interface IfcViewerProps {
   className?: string;

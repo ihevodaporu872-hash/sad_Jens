@@ -5,7 +5,7 @@
 
 import { supabase } from '../lib/supabase';
 import type { DbIfcModel, DbIfcElement, DbSpatialNode, DbWorkset } from '../lib/supabase';
-import type { ElementIndexEntry, QuantificationRow, Workset, IfcElementInfo, IfcPropertySet } from '../types/ifc';
+import type { ElementIndexEntry, QuantificationRow, Workset, IfcElementInfo, IfcPropertySet, SearchSet, SearchCriteria, Viewpoint, ViewpointData } from '../types/ifc';
 
 // ── Models ──────────────────────────────────────────────────────
 
@@ -282,5 +282,112 @@ function dbWorksetToWorkset(db: DbWorkset): Workset {
     },
     createdAt: db.created_at,
     updatedAt: db.updated_at,
+  };
+}
+
+// ── Search Sets CRUD ─────────────────────────────────────────────
+
+export async function getSearchSets(modelId: string): Promise<SearchSet[]> {
+  const { data, error } = await supabase
+    .from('search_sets')
+    .select('*')
+    .eq('model_id', modelId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.id,
+    modelId: row.model_id,
+    name: row.name,
+    criteria: (row.criteria || {}) as SearchCriteria,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function createSearchSet(
+  modelId: string,
+  input: { name: string; criteria: SearchCriteria }
+): Promise<SearchSet> {
+  const { data, error } = await supabase
+    .from('search_sets')
+    .insert({
+      model_id: modelId,
+      name: input.name,
+      criteria: input.criteria,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    modelId: data.model_id,
+    name: data.name,
+    criteria: (data.criteria || {}) as SearchCriteria,
+    createdAt: data.created_at,
+  };
+}
+
+export async function deleteSearchSet(searchSetId: string): Promise<void> {
+  const { error } = await supabase
+    .from('search_sets')
+    .delete()
+    .eq('id', searchSetId);
+  if (error) throw error;
+}
+
+// ── Viewpoints CRUD ──────────────────────────────────────────────
+
+export async function getViewpoints(modelId: string): Promise<Viewpoint[]> {
+  const { data, error } = await supabase
+    .from('viewpoints')
+    .select('*')
+    .eq('model_id', modelId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(dbViewpointToViewpoint);
+}
+
+export async function createViewpoint(
+  modelId: string,
+  input: ViewpointData
+): Promise<Viewpoint> {
+  const { data, error } = await supabase
+    .from('viewpoints')
+    .insert({
+      model_id: modelId,
+      name: input.name,
+      camera_position: input.cameraPosition,
+      camera_target: input.cameraTarget,
+      hidden_express_ids: input.hiddenExpressIds,
+      colored_elements: input.coloredElements,
+      clipping_planes: input.clippingPlanes,
+      thumbnail: input.thumbnail || null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return dbViewpointToViewpoint(data);
+}
+
+export async function deleteViewpoint(viewpointId: string): Promise<void> {
+  const { error } = await supabase
+    .from('viewpoints')
+    .delete()
+    .eq('id', viewpointId);
+  if (error) throw error;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dbViewpointToViewpoint(db: any): Viewpoint {
+  return {
+    id: db.id,
+    modelId: db.model_id,
+    name: db.name,
+    cameraPosition: db.camera_position || { x: 0, y: 0, z: 0 },
+    cameraTarget: db.camera_target || { x: 0, y: 0, z: 0 },
+    hiddenExpressIds: db.hidden_express_ids || [],
+    coloredElements: db.colored_elements || [],
+    clippingPlanes: db.clipping_planes || [],
+    thumbnail: db.thumbnail || undefined,
+    createdAt: db.created_at,
   };
 }

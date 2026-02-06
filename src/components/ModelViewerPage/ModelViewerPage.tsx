@@ -9,7 +9,9 @@ import { ElementActions } from '../ElementActions';
 import { Annotations } from '../Annotations';
 import { MeasureTools } from '../MeasureTools';
 import { AppearanceProfiler } from '../AppearanceProfiler';
+import { SearchSets } from '../SearchSets';
 import { SectionPlanes } from '../SectionPlanes';
+import { Viewpoints } from '../Viewpoints';
 import { getElementProperties } from '../../utils/ifcProperties';
 import * as supabaseApi from '../../services/supabaseService';
 import type {
@@ -22,7 +24,7 @@ import type {
 import type { DbSpatialNode } from '../../lib/supabase';
 import './ModelViewerPage.css';
 
-type LeftTab = 'worksets' | 'filter' | 'quantification' | 'tree' | 'profiler';
+type LeftTab = 'worksets' | 'filter' | 'quantification' | 'tree' | 'profiler' | 'searchsets';
 
 export function ModelViewerPage() {
   const viewerRef = useRef<IfcViewerRef>(null);
@@ -461,6 +463,12 @@ export function ModelViewerPage() {
             >
               Profiler
             </button>
+            <button
+              className={`sidebar-tab ${leftTab === 'searchsets' ? 'active' : ''}`}
+              onClick={() => setLeftTab('searchsets')}
+            >
+              Search
+            </button>
           </div>
 
           {/* Tab content */}
@@ -506,6 +514,14 @@ export function ModelViewerPage() {
               onResetColors={handleProfilerResetColors}
             />
           )}
+          {leftTab === 'searchsets' && (
+            <SearchSets
+              elementIndex={elementIndex}
+              supabaseModelId={supabaseModelId}
+              onSelectElements={handleFilterSelectElements}
+              onHighlightElements={handleFilterHighlightElements}
+            />
+          )}
         </aside>
       )}
 
@@ -549,10 +565,14 @@ export function ModelViewerPage() {
         {hasModel && <SectionPlanes viewerRef={viewerRef} />}
       </main>
 
-      {/* Right sidebar: Properties */}
+      {/* Right sidebar: Properties + Viewpoints */}
       {rightOpen && (
         <aside className="model-viewer-sidebar model-viewer-sidebar-right">
           <PropertiesPanel elementInfo={elementInfo} />
+          <Viewpoints
+            viewerRef={viewerRef}
+            supabaseModelId={supabaseModelId}
+          />
         </aside>
       )}
 
