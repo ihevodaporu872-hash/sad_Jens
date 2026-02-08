@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import type { IfcElementInfo } from '../../types/ifc';
 import './PropertiesPanel.css';
 
@@ -7,7 +7,7 @@ export interface PropertiesPanelProps {
   className?: string;
 }
 
-export function PropertiesPanel({ elementInfo, className }: PropertiesPanelProps) {
+export const PropertiesPanel = memo(function PropertiesPanel({ elementInfo, className }: PropertiesPanelProps) {
   const [expandedSets, setExpandedSets] = useState<Set<string>>(new Set());
 
   const toggleSet = (name: string) => {
@@ -177,4 +177,4 @@ export function PropertiesPanel({ elementInfo, className }: PropertiesPanelProps
       </div>
     </div>
   );
-}
+});

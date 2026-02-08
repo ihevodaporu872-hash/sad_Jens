@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import * as XLSX from 'xlsx';
 import type { ElementIndexEntry, QuantificationRow } from '../../types/ifc';
 import './Quantification.css';
@@ -13,7 +13,7 @@ type GroupByField = 'ifcType' | 'floor' | 'material';
 type SortField = 'groupKey' | 'count' | 'totalVolume' | 'totalArea';
 type SortDir = 'asc' | 'desc';
 
-export function Quantification({
+export const Quantification = memo(function Quantification({
   elementIndex,
   onSelectElements,
   className,
@@ -248,4 +248,4 @@ export function Quantification({
       </div>
     </div>
   );
-}
+});

@@ -175,12 +175,23 @@ export function AppearanceProfiler({
       const prop = selectedProperty as 'volume' | 'area' | 'height' | 'length';
       const { min, max } = numericStats;
       const range = max - min;
+      const STEPS = 64;
 
+      // Group elements by quantized color step
+      const groups = new Map<number, number[]>();
       for (const entry of elementIndex) {
         const v = entry[prop];
         const t = range > 0 ? (v - min) / range : 0.5;
+        const step = Math.min(STEPS - 1, Math.floor(t * STEPS));
+        if (!groups.has(step)) groups.set(step, []);
+        groups.get(step)!.push(entry.expressId);
+      }
+
+      // One call per color group instead of per element
+      for (const [step, ids] of groups) {
+        const t = (step + 0.5) / STEPS;
         const color = numericToColor(t);
-        onColorElements([entry.expressId], color);
+        onColorElements(ids, color);
       }
     }
 

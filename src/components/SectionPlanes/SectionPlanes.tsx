@@ -208,19 +208,17 @@ export function SectionPlanes({ viewerRef, className }: SectionPlanesProps) {
 
   // Update slider offset for individual axis plane
   const updatePlaneOffset = useCallback((axis: Axis, offset: number) => {
-    setPlanes((prev) => {
-      const state = prev[axis];
-      if (!state.active || !state.plane) return prev;
-
-      // Update the plane constant
-      // For a plane with normal N and constant d: N.x*x + N.y*y + N.z*z + d = 0
-      // We want to clip at the offset position along the axis
+    // Direct mutation for instant visual feedback
+    const state = planesRef.current[axis];
+    if (state.active && state.plane) {
       state.plane.constant = offset;
+    }
 
-      return {
-        ...prev,
-        [axis]: { ...state, offset },
-      };
+    // Debounced React state update for UI display
+    setPlanes((prev) => {
+      const s = prev[axis];
+      if (!s.active || !s.plane) return prev;
+      return { ...prev, [axis]: { ...s, offset } };
     });
   }, []);
 
@@ -273,27 +271,22 @@ export function SectionPlanes({ viewerRef, className }: SectionPlanesProps) {
   // Update box clip slider
   const updateBoxOffset = useCallback(
     (face: 'xMin' | 'xMax' | 'yMin' | 'yMax' | 'zMin' | 'zMax', value: number) => {
+      // Direct plane mutation for instant visual
+      const current = boxClipRef.current;
+      if (current.active && current.planes.length >= 6) {
+        const newOffsets = { ...current.offsets, [face]: value };
+        current.planes[0].constant = -newOffsets.xMin;
+        current.planes[1].constant = newOffsets.xMax;
+        current.planes[2].constant = -newOffsets.yMin;
+        current.planes[3].constant = newOffsets.yMax;
+        current.planes[4].constant = -newOffsets.zMin;
+        current.planes[5].constant = newOffsets.zMax;
+      }
+
       setBoxClip((prev) => {
         if (!prev.active || prev.planes.length < 6) return prev;
-
         const newOffsets = { ...prev.offsets, [face]: value };
-
-        // Plane index mapping: xMin=0, xMax=1, yMin=2, yMax=3, zMin=4, zMax=5
-        // xMin: normal (1,0,0), constant = -value (clips below value)
-        // xMax: normal (-1,0,0), constant = value (clips above value)
-        const planesCopy = [...prev.planes];
-        planesCopy[0].constant = -newOffsets.xMin;
-        planesCopy[1].constant = newOffsets.xMax;
-        planesCopy[2].constant = -newOffsets.yMin;
-        planesCopy[3].constant = newOffsets.yMax;
-        planesCopy[4].constant = -newOffsets.zMin;
-        planesCopy[5].constant = newOffsets.zMax;
-
-        return {
-          ...prev,
-          planes: planesCopy,
-          offsets: newOffsets,
-        };
+        return { ...prev, offsets: newOffsets };
       });
     },
     []

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import type { DbSpatialNode } from '../../lib/supabase';
 import type { ElementIndexEntry } from '../../types/ifc';
 import './SelectionTree.css';
@@ -25,7 +25,7 @@ interface TreeNode {
  * SelectionTree -- hierarchical IFC spatial tree:
  * IfcProject > IfcSite > IfcBuilding > IfcBuildingStorey > elements grouped by type
  */
-export function SelectionTree({
+export const SelectionTree = memo(function SelectionTree({
   spatialTree,
   elementIndex,
   onSelectElements,
@@ -255,4 +255,4 @@ export function SelectionTree({
       </div>
     </div>
   );
-}
+});
