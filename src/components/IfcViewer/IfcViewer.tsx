@@ -49,6 +49,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
     const controlsRef = useRef<OrbitControls | null>(null);
     const ifcApiRef = useRef<WebIFC.IfcAPI | null>(null);
     const animationFrameRef = useRef<number | null>(null);
+    const renderNeededRef = useRef(true);
     const modelGroupRef = useRef<THREE.Group | null>(null);
     const modelIdRef = useRef<number | null>(null);
 
@@ -153,11 +154,20 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
       [restoreMaterial]
     );
 
+    // ── On-demand render helper ─────────────────────────────────────
+    const requestRender = useCallback(() => {
+      renderNeededRef.current = true;
+    }, []);
+
     // ── Imperative API ──────────────────────────────────────────────
 
     useImperativeHandle(
       ref,
       () => ({
+        requestRender() {
+          requestRender();
+        },
+
         highlightElements(worksetId: string, expressIds: number[], color: string, opacity: number) {
           // Clear previous highlight for this workset
           this.clearHighlight(worksetId);
@@ -171,6 +181,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               applyHighlightToMesh(mesh, color, opacity);
             }
           }
+          requestRender();
         },
 
         clearHighlight(worksetId?: string) {
@@ -199,6 +210,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
             }
             activeHighlightsRef.current.clear();
           }
+          requestRender();
         },
 
         isolate(expressIds: number[]) {
@@ -215,6 +227,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               }
             }
           });
+          requestRender();
         },
 
         unisolate() {
@@ -227,6 +240,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               child.visible = true;
             }
           });
+          requestRender();
         },
 
         setElementsOpacity(expressIds: number[], opacity: number) {
@@ -246,6 +260,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               }
             }
           }
+          requestRender();
         },
 
         setOthersWireframe(expressIdsToKeep: number[]) {
@@ -255,6 +270,14 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
 
           // Clear previous wireframe-others state
           this.clearOthersWireframe();
+
+          // Single shared wireframe material for all "others"
+          const sharedWireMat = new THREE.MeshBasicMaterial({
+            color: 0x8899bb,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.35,
+          });
 
           modelGroup.traverse((child) => {
             if (child instanceof THREE.Mesh) {
@@ -269,17 +292,11 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
                       : child.material.clone()
                   );
                 }
-                // Apply wireframe
-                const wireMat = new THREE.MeshBasicMaterial({
-                  color: 0x8899bb,
-                  wireframe: true,
-                  transparent: true,
-                  opacity: 0.35,
-                });
-                child.material = wireMat;
+                child.material = sharedWireMat;
               }
             }
           });
+          requestRender();
         },
 
         clearOthersWireframe() {
@@ -294,6 +311,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
             });
           }
           wireframeOthersRef.current.clear();
+          requestRender();
         },
 
         getModelId() {
@@ -313,6 +331,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               mesh.visible = false;
             }
           }
+          requestRender();
         },
 
         showElements(expressIds: number[]) {
@@ -324,6 +343,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               mesh.visible = true;
             }
           }
+          requestRender();
         },
 
         showAll() {
@@ -335,6 +355,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               child.visible = true;
             }
           });
+          requestRender();
         },
 
         colorElements(expressIds: number[], color: string) {
@@ -352,6 +373,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               mesh.material = mat;
             }
           }
+          requestRender();
         },
 
         resetColors() {
@@ -363,6 +385,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
             }
           }
           coloredIdsRef.current.clear();
+          requestRender();
         },
 
         selectElements(expressIds: number[]) {
@@ -387,6 +410,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           } else {
             onElementSelected?.(null);
           }
+          requestRender();
         },
 
         getAllExpressIds() {
@@ -422,6 +446,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           cameraRef.current.position.copy(newPos);
           controlsRef.current.target.copy(center);
           controlsRef.current.update();
+          requestRender();
         },
 
         zoomToFit() {
@@ -438,6 +463,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           cameraRef.current.position.copy(newPos);
           controlsRef.current.target.copy(center);
           controlsRef.current.update();
+          requestRender();
         },
 
         getScene() { return sceneRef.current; },
@@ -451,7 +477,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           setBoxSelectMode(enabled);
         },
       }),
-      [applyHighlightToMesh, restoreMaterial, storeOriginalMaterial, applySelectionHighlight, removeSelectionHighlight, onElementSelected, onSelectionChanged]
+      [applyHighlightToMesh, restoreMaterial, storeOriginalMaterial, applySelectionHighlight, removeSelectionHighlight, onElementSelected, onSelectionChanged, requestRender]
     );
 
     // ── Initialize Three.js scene and web-ifc ───────────────────────
@@ -486,8 +512,6 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           const renderer = new THREE.WebGLRenderer({ antialias: true });
           renderer.setSize(width, height);
           renderer.setPixelRatio(window.devicePixelRatio);
-          renderer.shadowMap.enabled = true;
-          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
           container.appendChild(renderer.domElement);
           rendererRef.current = renderer;
 
@@ -506,9 +530,6 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
 
           const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
           directionalLight.position.set(50, 100, 50);
-          directionalLight.castShadow = true;
-          directionalLight.shadow.mapSize.width = 2048;
-          directionalLight.shadow.mapSize.height = 2048;
           scene.add(directionalLight);
 
           const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
@@ -609,16 +630,24 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               onElementSelected?.(null);
               onSelectionChanged?.([]);
             }
+            renderNeededRef.current = true;
           };
 
           renderer.domElement.addEventListener('mousedown', onMouseDown);
           renderer.domElement.addEventListener('click', onClick);
 
-          // Animation loop
+          // On-demand rendering: only render when needed
+          controls.addEventListener('change', () => {
+            renderNeededRef.current = true;
+          });
+
           const animate = () => {
             animationFrameRef.current = requestAnimationFrame(animate);
             controls.update();
-            renderer.render(scene, camera);
+            if (renderNeededRef.current) {
+              renderNeededRef.current = false;
+              renderer.render(scene, camera);
+            }
           };
           animate();
 
@@ -630,6 +659,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
             camera.aspect = newWidth / newHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(newWidth, newHeight);
+            renderNeededRef.current = true;
           };
           window.addEventListener('resize', handleResize);
 
@@ -974,8 +1004,6 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
           });
 
           const mesh = new THREE.Mesh(bufferGeometry, material);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
           // Store expressID for raycast identification
           mesh.userData.expressID = expressID;
 
@@ -1078,21 +1106,33 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
         console.log('[IFC Viewer] Streaming and processing meshes...');
         setLoadingProgress(0);
 
-        ifcApi.StreamAllMeshes(modelID, (mesh: WebIFC.FlatMesh, index: number, total: number) => {
+        // Phase 1: Collect raw mesh data synchronously (fast — no Three.js objects yet)
+        interface RawMeshData {
+          expressID: number;
+          placedGeometry: WebIFC.PlacedGeometry;
+        }
+        const rawMeshes: RawMeshData[] = [];
+
+        ifcApi.StreamAllMeshes(modelID, (mesh: WebIFC.FlatMesh) => {
           flatMeshCount++;
           const expressID = mesh.expressID;
-
-          if (index % 20 === 0 || index === total - 1) {
-            const progress = Math.round(((index + 1) / total) * 100);
-            setLoadingProgress(progress);
-            setLoadingMessage(`Loading geometry... ${progress}%`);
-          }
-
           const geometries = mesh.geometries;
           const size = geometries.size();
-
           for (let j = 0; j < size; j++) {
-            const placedGeometry = geometries.get(j);
+            rawMeshes.push({ expressID, placedGeometry: geometries.get(j) });
+          }
+        });
+
+        setLoadingMessage(`Processing ${rawMeshes.length} geometries...`);
+
+        // Phase 2: Process in async batches to avoid UI freeze
+        const BATCH_SIZE = 200;
+        const totalRaw = rawMeshes.length;
+
+        for (let i = 0; i < totalRaw; i += BATCH_SIZE) {
+          const end = Math.min(i + BATCH_SIZE, totalRaw);
+          for (let k = i; k < end; k++) {
+            const { expressID, placedGeometry } = rawMeshes[k];
             const threeMesh = createMeshFromGeometry(ifcApi, modelID, placedGeometry, expressID);
             if (threeMesh) {
               modelGroup.add(threeMesh);
@@ -1105,7 +1145,14 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
               expressIdToMeshesRef.current.get(expressID)!.push(threeMesh);
             }
           }
-        });
+
+          // Yield to UI thread + update progress
+          const progress = Math.round((end / totalRaw) * 100);
+          setLoadingProgress(progress);
+          setLoadingMessage(`Processing geometry... ${progress}%`);
+          renderNeededRef.current = true;
+          await new Promise((r) => setTimeout(r, 0));
+        }
 
         setLoadingProgress(100);
         console.log(
@@ -1157,6 +1204,7 @@ export const IfcViewer = forwardRef<IfcViewerRef, IfcViewerProps>(
             controlsRef.current.minDistance = maxDim * 0.05;
             controlsRef.current.maxDistance = maxDim * 20;
             controlsRef.current.update();
+            renderNeededRef.current = true;
           }
         } else {
           console.warn('[IFC Viewer] No meshes were added to the model group');
