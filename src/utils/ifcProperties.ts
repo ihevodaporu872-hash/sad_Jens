@@ -13,6 +13,126 @@ const IFCRELASSOCIATESMATERIAL = 2655215786;
 const IFCRELASSOCIATESCLASSIFICATION = 919958153;
 const IFCRELCONTAINEDINSPATIALSTRUCTURE = 3242617779;
 
+// Pre-built relationship index for O(1) lookups
+export interface RelationshipIndex {
+  // expressId -> array of property definition IDs
+  propertyDefs: Map<number, number[]>;
+  // expressId -> array of material IDs
+  materials: Map<number, number[]>;
+  // expressId -> array of classification IDs
+  classifications: Map<number, number[]>;
+  // expressId -> spatial structure (floor) ID
+  spatialContainment: Map<number, number>;
+}
+
+export function buildRelationshipIndex(
+  ifcApi: unknown,
+  modelId: number
+): RelationshipIndex {
+  const api = ifcApi as {
+    GetLine: (m: number, e: number, flat?: boolean) => Record<string, unknown>;
+    GetLineIDsWithType: (m: number, t: number) => { size: () => number; get: (i: number) => number };
+  };
+
+  const propertyDefs = new Map<number, number[]>();
+  const materials = new Map<number, number[]>();
+  const classifications = new Map<number, number[]>();
+  const spatialContainment = new Map<number, number>();
+
+  // Helper to extract expressId from reference
+  const getId = (ref: unknown): number | null => {
+    if (typeof ref === 'number') return ref;
+    if (typeof ref === 'object' && ref !== null && 'value' in (ref as Record<string, unknown>)) {
+      return (ref as { value: number }).value;
+    }
+    return null;
+  };
+
+  const getRelatedIds = (rel: Record<string, unknown>, field: string): number[] => {
+    const arr = rel[field] as unknown[] | undefined;
+    if (!Array.isArray(arr)) return [];
+    const ids: number[] = [];
+    for (const item of arr) {
+      const id = getId(item);
+      if (id !== null) ids.push(id);
+    }
+    return ids;
+  };
+
+  // Index IfcRelDefinesByProperties
+  try {
+    const relIds = api.GetLineIDsWithType(modelId, IFCRELDEFINESBYPROPERTIES);
+    for (let i = 0, len = relIds.size(); i < len; i++) {
+      try {
+        const rel = api.GetLine(modelId, relIds.get(i), false);
+        if (!rel) continue;
+        const propDefId = getId(rel.RelatingPropertyDefinition);
+        if (!propDefId) continue;
+        const objectIds = getRelatedIds(rel, 'RelatedObjects');
+        for (const eid of objectIds) {
+          if (!propertyDefs.has(eid)) propertyDefs.set(eid, []);
+          propertyDefs.get(eid)!.push(propDefId);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* ignore */ }
+
+  // Index IfcRelAssociatesMaterial
+  try {
+    const relIds = api.GetLineIDsWithType(modelId, IFCRELASSOCIATESMATERIAL);
+    for (let i = 0, len = relIds.size(); i < len; i++) {
+      try {
+        const rel = api.GetLine(modelId, relIds.get(i), false);
+        if (!rel) continue;
+        const matId = getId(rel.RelatingMaterial);
+        if (!matId) continue;
+        const objectIds = getRelatedIds(rel, 'RelatedObjects');
+        for (const eid of objectIds) {
+          if (!materials.has(eid)) materials.set(eid, []);
+          materials.get(eid)!.push(matId);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* ignore */ }
+
+  // Index IfcRelAssociatesClassification
+  try {
+    const relIds = api.GetLineIDsWithType(modelId, IFCRELASSOCIATESCLASSIFICATION);
+    for (let i = 0, len = relIds.size(); i < len; i++) {
+      try {
+        const rel = api.GetLine(modelId, relIds.get(i), false);
+        if (!rel) continue;
+        const classId = getId(rel.RelatingClassification);
+        if (!classId) continue;
+        const objectIds = getRelatedIds(rel, 'RelatedObjects');
+        for (const eid of objectIds) {
+          if (!classifications.has(eid)) classifications.set(eid, []);
+          classifications.get(eid)!.push(classId);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* ignore */ }
+
+  // Index IfcRelContainedInSpatialStructure
+  try {
+    const relIds = api.GetLineIDsWithType(modelId, IFCRELCONTAINEDINSPATIALSTRUCTURE);
+    for (let i = 0, len = relIds.size(); i < len; i++) {
+      try {
+        const rel = api.GetLine(modelId, relIds.get(i), false);
+        if (!rel) continue;
+        const structId = getId(rel.RelatingStructure);
+        if (!structId) continue;
+        const elementIds = getRelatedIds(rel, 'RelatedElements');
+        for (const eid of elementIds) {
+          spatialContainment.set(eid, structId);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* ignore */ }
+
+  return { propertyDefs, materials, classifications, spatialContainment };
+}
+
 // Property name patterns for key params extraction
 const VOLUME_NAMES = ['netvolume', 'grossvolume', 'volume', 'объем', 'объём'];
 const AREA_NAMES = ['netarea', 'grossarea', 'netsidearea', 'grosssidearea', 'area', 'площадь', 'crosssectionarea', 'outersurfacearea', 'totalsurfacearea', 'netsurfacearea'];
@@ -57,7 +177,8 @@ function getTypeName(ifcApi: unknown, modelId: number, expressId: number): strin
 export function getElementProperties(
   ifcApi: unknown,
   modelId: number,
-  expressId: number
+  expressId: number,
+  index?: RelationshipIndex
 ): IfcElementInfo | null {
   try {
     const api = ifcApi as {
@@ -77,308 +198,298 @@ export function getElementProperties(
     // Find property sets via IfcRelDefinesByProperties
     const propertySets: IfcPropertySet[] = [];
 
-    try {
-      const relIds = api.GetLineIDsWithType(modelId, IFCRELDEFINESBYPROPERTIES);
-      const relCount = relIds.size();
+    // Helper to extract properties from a propDefId
+    const extractPropDef = (propDefId: number) => {
+      try {
+        const propDef = api.GetLine(modelId, propDefId, false);
+        if (!propDef) return;
 
-      for (let i = 0; i < relCount; i++) {
-        const relId = relIds.get(i);
-        try {
-          const rel = api.GetLine(modelId, relId, false);
-          if (!rel) continue;
+        const psetName = safeStr(propDef.Name) || 'PropertySet';
 
-          // Check if this relation references our expressId
-          const relatedObjects = rel.RelatedObjects as
-            | { value: number }[]
-            | number[]
-            | undefined;
-          if (!relatedObjects) continue;
+        // Extract regular properties (IfcPropertySet)
+        const hasProperties = propDef.HasProperties as
+          | { value: number }[]
+          | number[]
+          | undefined;
 
-          let found = false;
-          if (Array.isArray(relatedObjects)) {
-            for (const obj of relatedObjects) {
-              const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
-              if (objId === expressId) {
-                found = true;
-                break;
+        if (Array.isArray(hasProperties)) {
+          const properties: IfcProperty[] = [];
+          for (const propRef of hasProperties) {
+            const propId =
+              typeof propRef === 'object' && propRef !== null
+                ? (propRef as { value: number }).value
+                : (propRef as number);
+
+            try {
+              const prop = api.GetLine(modelId, propId, false);
+              if (!prop) continue;
+
+              const propName = safeStr(prop.Name);
+              let propValue: string | number | boolean | null = null;
+
+              if (prop.NominalValue !== undefined && prop.NominalValue !== null) {
+                const nomVal = prop.NominalValue;
+                if (typeof nomVal === 'object' && nomVal !== null && 'value' in (nomVal as Record<string, unknown>)) {
+                  propValue = (nomVal as Record<string, unknown>).value as string | number | boolean;
+                } else {
+                  propValue = nomVal as string | number | boolean;
+                }
               }
+
+              properties.push({ name: propName, value: propValue });
+            } catch {
+              // skip individual property
             }
           }
-          if (!found) continue;
 
-          // Get the property definition
-          const propDefRef = rel.RelatingPropertyDefinition;
-          const propDefId =
-            typeof propDefRef === 'object' && propDefRef !== null
-              ? (propDefRef as { value: number }).value
-              : (propDefRef as number);
+          if (properties.length > 0) {
+            propertySets.push({ name: psetName, properties });
+          }
+        }
 
-          if (!propDefId) continue;
+        // Extract quantity sets (IfcElementQuantity — has Quantities instead of HasProperties)
+        const quantities = propDef.Quantities as
+          | { value: number }[]
+          | number[]
+          | undefined;
 
+        if (quantities && Array.isArray(quantities)) {
+          const qtoName = safeStr(propDef.Name) || 'QuantitySet';
+          // Check if this pset was already added as a property set (avoid duplicates)
+          const alreadyAdded = propertySets.some((ps) => ps.name === qtoName);
+          if (alreadyAdded) return;
+
+          const qtoProperties: IfcProperty[] = [];
+
+          for (const qRef of quantities) {
+            const qId =
+              typeof qRef === 'object' && qRef !== null
+                ? (qRef as { value: number }).value
+                : (qRef as number);
+
+            try {
+              const q = api.GetLine(modelId, qId, false);
+              if (!q) continue;
+
+              const qName = safeStr(q.Name);
+              let qValue: string | number | boolean | null = null;
+              for (const field of ['LengthValue', 'AreaValue', 'VolumeValue', 'CountValue', 'WeightValue', 'TimeValue']) {
+                if (q[field] !== undefined && q[field] !== null) {
+                  const v = q[field];
+                  if (typeof v === 'object' && v !== null && 'value' in (v as Record<string, unknown>)) {
+                    qValue = (v as Record<string, unknown>).value as string | number | boolean;
+                  } else {
+                    qValue = v as string | number | boolean;
+                  }
+                  break;
+                }
+              }
+
+              if (qName) {
+                qtoProperties.push({ name: qName, value: qValue });
+              }
+            } catch {
+              // skip individual quantity
+            }
+          }
+
+          if (qtoProperties.length > 0) {
+            propertySets.push({ name: qtoName, properties: qtoProperties });
+          }
+        }
+      } catch {
+        // skip property definition
+      }
+    };
+
+    if (index) {
+      // ── FAST PATH: use pre-built index for O(1) lookups ──
+      const propDefIds = index.propertyDefs.get(expressId) || [];
+      for (const propDefId of propDefIds) {
+        extractPropDef(propDefId);
+      }
+    } else {
+      // ── SLOW PATH: full scan of all relationships (fallback) ──
+      try {
+        const relIds = api.GetLineIDsWithType(modelId, IFCRELDEFINESBYPROPERTIES);
+        const relCount = relIds.size();
+
+        for (let i = 0; i < relCount; i++) {
+          const relId = relIds.get(i);
           try {
-            const propDef = api.GetLine(modelId, propDefId, false);
-            if (!propDef) continue;
+            const rel = api.GetLine(modelId, relId, false);
+            if (!rel) continue;
 
-            const psetName = safeStr(propDef.Name) || 'PropertySet';
-            const properties: IfcProperty[] = [];
-
-            const hasProperties = propDef.HasProperties as
+            const relatedObjects = rel.RelatedObjects as
               | { value: number }[]
               | number[]
               | undefined;
+            if (!relatedObjects) continue;
 
-            if (Array.isArray(hasProperties)) {
-              for (const propRef of hasProperties) {
-                const propId =
-                  typeof propRef === 'object' && propRef !== null
-                    ? (propRef as { value: number }).value
-                    : (propRef as number);
-
-                try {
-                  const prop = api.GetLine(modelId, propId, false);
-                  if (!prop) continue;
-
-                  const propName = safeStr(prop.Name);
-                  let propValue: string | number | boolean | null = null;
-
-                  if (prop.NominalValue !== undefined && prop.NominalValue !== null) {
-                    const nomVal = prop.NominalValue;
-                    if (typeof nomVal === 'object' && nomVal !== null && 'value' in (nomVal as Record<string, unknown>)) {
-                      propValue = (nomVal as Record<string, unknown>).value as string | number | boolean;
-                    } else {
-                      propValue = nomVal as string | number | boolean;
-                    }
-                  }
-
-                  properties.push({ name: propName, value: propValue });
-                } catch {
-                  // skip individual property
+            let found = false;
+            if (Array.isArray(relatedObjects)) {
+              for (const obj of relatedObjects) {
+                const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
+                if (objId === expressId) {
+                  found = true;
+                  break;
                 }
               }
             }
+            if (!found) continue;
 
-            if (properties.length > 0) {
-              propertySets.push({ name: psetName, properties });
-            }
+            const propDefRef = rel.RelatingPropertyDefinition;
+            const propDefId =
+              typeof propDefRef === 'object' && propDefRef !== null
+                ? (propDefRef as { value: number }).value
+                : (propDefRef as number);
+
+            if (!propDefId) continue;
+            extractPropDef(propDefId);
           } catch {
-            // skip property definition
+            // skip relation
           }
-        } catch {
-          // skip relation
         }
+      } catch (e) {
+        console.warn('[IFC Properties] Error reading property sets:', e);
       }
-    } catch (e) {
-      console.warn('[IFC Properties] Error reading property sets:', e);
     }
 
     // Find materials via IfcRelAssociatesMaterial
     const materials: string[] = [];
-    try {
-      const matRelIds = api.GetLineIDsWithType(modelId, IFCRELASSOCIATESMATERIAL);
-      const matRelCount = matRelIds.size();
 
-      for (let i = 0; i < matRelCount; i++) {
-        const relId = matRelIds.get(i);
-        try {
-          const rel = api.GetLine(modelId, relId, false);
-          if (!rel) continue;
-
-          const relatedObjects = rel.RelatedObjects as { value: number }[] | number[] | undefined;
-          if (!relatedObjects) continue;
-
-          let found = false;
-          if (Array.isArray(relatedObjects)) {
-            for (const obj of relatedObjects) {
-              const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
-              if (objId === expressId) {
-                found = true;
-                break;
-              }
-            }
-          }
-          if (!found) continue;
-
-          const matRef = rel.RelatingMaterial;
-          const matId =
-            typeof matRef === 'object' && matRef !== null
-              ? (matRef as { value: number }).value
-              : (matRef as number);
-
-          if (matId) {
-            try {
-              const mat = api.GetLine(modelId, matId, false);
-              if (mat) {
-                const matName = safeStr(mat.Name);
-                if (matName) materials.push(matName);
-              }
-            } catch {
-              // skip
-            }
-          }
-        } catch {
-          // skip relation
+    // Helper to resolve material name from matId
+    const resolveMaterial = (matId: number) => {
+      try {
+        const mat = api.GetLine(modelId, matId, false);
+        if (mat) {
+          const matName = safeStr(mat.Name);
+          if (matName) materials.push(matName);
         }
+      } catch {
+        // skip
       }
-    } catch {
-      // ignore material errors
+    };
+
+    if (index) {
+      // ── FAST PATH ──
+      const matIds = index.materials.get(expressId) || [];
+      for (const matId of matIds) {
+        resolveMaterial(matId);
+      }
+    } else {
+      // ── SLOW PATH ──
+      try {
+        const matRelIds = api.GetLineIDsWithType(modelId, IFCRELASSOCIATESMATERIAL);
+        const matRelCount = matRelIds.size();
+
+        for (let i = 0; i < matRelCount; i++) {
+          const relId = matRelIds.get(i);
+          try {
+            const rel = api.GetLine(modelId, relId, false);
+            if (!rel) continue;
+
+            const relatedObjects = rel.RelatedObjects as { value: number }[] | number[] | undefined;
+            if (!relatedObjects) continue;
+
+            let found = false;
+            if (Array.isArray(relatedObjects)) {
+              for (const obj of relatedObjects) {
+                const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
+                if (objId === expressId) {
+                  found = true;
+                  break;
+                }
+              }
+            }
+            if (!found) continue;
+
+            const matRef = rel.RelatingMaterial;
+            const matId =
+              typeof matRef === 'object' && matRef !== null
+                ? (matRef as { value: number }).value
+                : (matRef as number);
+
+            if (matId) {
+              resolveMaterial(matId);
+            }
+          } catch {
+            // skip relation
+          }
+        }
+      } catch {
+        // ignore material errors
+      }
     }
 
     // Find classifications via IfcRelAssociatesClassification
     const classifications: string[] = [];
-    try {
-      const classRelIds = api.GetLineIDsWithType(modelId, IFCRELASSOCIATESCLASSIFICATION);
-      const classRelCount = classRelIds.size();
 
-      for (let i = 0; i < classRelCount; i++) {
-        const relId = classRelIds.get(i);
-        try {
-          const rel = api.GetLine(modelId, relId, false);
-          if (!rel) continue;
-
-          const relatedObjects = rel.RelatedObjects as { value: number }[] | number[] | undefined;
-          if (!relatedObjects) continue;
-
-          let found = false;
-          if (Array.isArray(relatedObjects)) {
-            for (const obj of relatedObjects) {
-              const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
-              if (objId === expressId) {
-                found = true;
-                break;
-              }
-            }
+    // Helper to resolve classification from classId
+    const resolveClassification = (classId: number) => {
+      try {
+        const classEntity = api.GetLine(modelId, classId, false);
+        if (classEntity) {
+          const className = safeStr(classEntity.Name);
+          const classCode = safeStr(classEntity.ItemReference || classEntity.Identification);
+          if (className || classCode) {
+            classifications.push(classCode ? `${classCode}: ${className}` : className);
           }
-          if (!found) continue;
-
-          const classRef = rel.RelatingClassification;
-          const classId =
-            typeof classRef === 'object' && classRef !== null
-              ? (classRef as { value: number }).value
-              : (classRef as number);
-
-          if (classId) {
-            try {
-              const classEntity = api.GetLine(modelId, classId, false);
-              if (classEntity) {
-                const className = safeStr(classEntity.Name);
-                const classCode = safeStr(classEntity.ItemReference || classEntity.Identification);
-                if (className || classCode) {
-                  classifications.push(classCode ? `${classCode}: ${className}` : className);
-                }
-              }
-            } catch {
-              // skip
-            }
-          }
-        } catch {
-          // skip
         }
+      } catch {
+        // skip
       }
-    } catch {
-      // ignore classification errors
-    }
+    };
 
-    // ── Extract quantity sets (IfcElementQuantity) ──
-    try {
-      const relIds = api.GetLineIDsWithType(modelId, IFCRELDEFINESBYPROPERTIES);
-      const relCount = relIds.size();
+    if (index) {
+      // ── FAST PATH ──
+      const classIds = index.classifications.get(expressId) || [];
+      for (const classId of classIds) {
+        resolveClassification(classId);
+      }
+    } else {
+      // ── SLOW PATH ──
+      try {
+        const classRelIds = api.GetLineIDsWithType(modelId, IFCRELASSOCIATESCLASSIFICATION);
+        const classRelCount = classRelIds.size();
 
-      for (let i = 0; i < relCount; i++) {
-        const relId = relIds.get(i);
-        try {
-          const rel = api.GetLine(modelId, relId, false);
-          if (!rel) continue;
-
-          const relatedObjects = rel.RelatedObjects as
-            | { value: number }[]
-            | number[]
-            | undefined;
-          if (!relatedObjects) continue;
-
-          let found = false;
-          if (Array.isArray(relatedObjects)) {
-            for (const obj of relatedObjects) {
-              const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
-              if (objId === expressId) {
-                found = true;
-                break;
-              }
-            }
-          }
-          if (!found) continue;
-
-          const propDefRef = rel.RelatingPropertyDefinition;
-          const propDefId =
-            typeof propDefRef === 'object' && propDefRef !== null
-              ? (propDefRef as { value: number }).value
-              : (propDefRef as number);
-
-          if (!propDefId) continue;
-
+        for (let i = 0; i < classRelCount; i++) {
+          const relId = classRelIds.get(i);
           try {
-            const propDef = api.GetLine(modelId, propDefId, false);
-            if (!propDef) continue;
+            const rel = api.GetLine(modelId, relId, false);
+            if (!rel) continue;
 
-            // Check if this is an IfcElementQuantity (has Quantities instead of HasProperties)
-            const quantities = propDef.Quantities as
-              | { value: number }[]
-              | number[]
-              | undefined;
+            const relatedObjects = rel.RelatedObjects as { value: number }[] | number[] | undefined;
+            if (!relatedObjects) continue;
 
-            if (quantities && Array.isArray(quantities)) {
-              const qtoName = safeStr(propDef.Name) || 'QuantitySet';
-              const qtoProperties: IfcProperty[] = [];
-
-              // Check if this pset was already added as a property set (avoid duplicates)
-              const alreadyAdded = propertySets.some((ps) => ps.name === qtoName);
-              if (alreadyAdded) continue;
-
-              for (const qRef of quantities) {
-                const qId =
-                  typeof qRef === 'object' && qRef !== null
-                    ? (qRef as { value: number }).value
-                    : (qRef as number);
-
-                try {
-                  const q = api.GetLine(modelId, qId, false);
-                  if (!q) continue;
-
-                  const qName = safeStr(q.Name);
-                  // IfcQuantityLength/Area/Volume/Count/Weight all have value fields
-                  let qValue: string | number | boolean | null = null;
-                  for (const field of ['LengthValue', 'AreaValue', 'VolumeValue', 'CountValue', 'WeightValue', 'TimeValue']) {
-                    if (q[field] !== undefined && q[field] !== null) {
-                      const v = q[field];
-                      if (typeof v === 'object' && v !== null && 'value' in (v as Record<string, unknown>)) {
-                        qValue = (v as Record<string, unknown>).value as string | number | boolean;
-                      } else {
-                        qValue = v as string | number | boolean;
-                      }
-                      break;
-                    }
-                  }
-
-                  if (qName) {
-                    qtoProperties.push({ name: qName, value: qValue });
-                  }
-                } catch {
-                  // skip individual quantity
+            let found = false;
+            if (Array.isArray(relatedObjects)) {
+              for (const obj of relatedObjects) {
+                const objId = typeof obj === 'object' && obj !== null ? (obj as { value: number }).value : obj;
+                if (objId === expressId) {
+                  found = true;
+                  break;
                 }
               }
+            }
+            if (!found) continue;
 
-              if (qtoProperties.length > 0) {
-                propertySets.push({ name: qtoName, properties: qtoProperties });
-              }
+            const classRef = rel.RelatingClassification;
+            const classId =
+              typeof classRef === 'object' && classRef !== null
+                ? (classRef as { value: number }).value
+                : (classRef as number);
+
+            if (classId) {
+              resolveClassification(classId);
             }
           } catch {
             // skip
           }
-        } catch {
-          // skip
         }
+      } catch {
+        // ignore classification errors
       }
-    } catch {
-      // ignore quantity set errors
     }
 
     // ── Extract key parameters from property sets (including quantity sets) ──
@@ -409,41 +520,56 @@ export function getElementProperties(
     }
 
     // ── Find floor (IfcBuildingStorey) via spatial containment ──
-    try {
-      const contRelIds = api.GetLineIDsWithType(modelId, IFCRELCONTAINEDINSPATIALSTRUCTURE);
-      const contRelCount = contRelIds.size();
-
-      for (let i = 0; i < contRelCount; i++) {
-        if (keyParams.floor) break;
-        const relId = contRelIds.get(i);
+    if (index) {
+      // ── FAST PATH ──
+      const structId = index.spatialContainment.get(expressId);
+      if (structId) {
         try {
-          const rel = api.GetLine(modelId, relId, false);
-          if (!rel) continue;
-
-          const relatedElements = rel.RelatedElements as { value: number }[] | number[] | undefined;
-          if (!relatedElements || !Array.isArray(relatedElements)) continue;
-
-          let found = false;
-          for (const elem of relatedElements) {
-            const elemId = typeof elem === 'object' && elem !== null ? (elem as { value: number }).value : elem;
-            if (elemId === expressId) { found = true; break; }
-          }
-          if (!found) continue;
-
-          const structRef = rel.RelatingStructure;
-          const structId = typeof structRef === 'object' && structRef !== null
-            ? (structRef as { value: number }).value
-            : (structRef as number);
-          if (structId) {
-            const struct = api.GetLine(modelId, structId, false);
-            if (struct) {
-              const floorName = safeStr(struct.Name) || safeStr(struct.LongName);
-              if (floorName) keyParams.floor = floorName;
-            }
+          const struct = api.GetLine(modelId, structId, false);
+          if (struct) {
+            const floorName = safeStr(struct.Name) || safeStr(struct.LongName);
+            if (floorName) keyParams.floor = floorName;
           }
         } catch { /* skip */ }
       }
-    } catch { /* ignore */ }
+    } else {
+      // ── SLOW PATH ──
+      try {
+        const contRelIds = api.GetLineIDsWithType(modelId, IFCRELCONTAINEDINSPATIALSTRUCTURE);
+        const contRelCount = contRelIds.size();
+
+        for (let i = 0; i < contRelCount; i++) {
+          if (keyParams.floor) break;
+          const relId = contRelIds.get(i);
+          try {
+            const rel = api.GetLine(modelId, relId, false);
+            if (!rel) continue;
+
+            const relatedElements = rel.RelatedElements as { value: number }[] | number[] | undefined;
+            if (!relatedElements || !Array.isArray(relatedElements)) continue;
+
+            let found = false;
+            for (const elem of relatedElements) {
+              const elemId = typeof elem === 'object' && elem !== null ? (elem as { value: number }).value : elem;
+              if (elemId === expressId) { found = true; break; }
+            }
+            if (!found) continue;
+
+            const structRef = rel.RelatingStructure;
+            const structId = typeof structRef === 'object' && structRef !== null
+              ? (structRef as { value: number }).value
+              : (structRef as number);
+            if (structId) {
+              const struct = api.GetLine(modelId, structId, false);
+              if (struct) {
+                const floorName = safeStr(struct.Name) || safeStr(struct.LongName);
+                if (floorName) keyParams.floor = floorName;
+              }
+            }
+          } catch { /* skip */ }
+        }
+      } catch { /* ignore */ }
+    }
 
     return {
       expressId,
@@ -472,6 +598,9 @@ export async function buildElementIndex(
   expressIds: number[],
   onProgress?: (done: number, total: number) => void
 ): Promise<ElementIndexEntry[]> {
+  // Build relationship index once — O(R) where R = total relationships
+  const relIndex = buildRelationshipIndex(ifcApi, modelId);
+
   const entries: ElementIndexEntry[] = [];
   const total = expressIds.length;
   const BATCH = 50;
@@ -480,7 +609,7 @@ export async function buildElementIndex(
     const batch = expressIds.slice(i, i + BATCH);
     for (const eid of batch) {
       try {
-        const info = getElementProperties(ifcApi, modelId, eid);
+        const info = getElementProperties(ifcApi, modelId, eid, relIndex);
         if (!info) continue;
 
         const searchableProps: string[] = [];
