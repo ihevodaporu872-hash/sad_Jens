@@ -7,6 +7,36 @@ import { supabase } from '../lib/supabase';
 import type { DbIfcModel, DbIfcElement, DbSpatialNode, DbWorkset } from '../lib/supabase';
 import type { ElementIndexEntry, QuantificationRow, Workset, IfcElementInfo, IfcPropertySet, SearchSet, SearchCriteria, Viewpoint, ViewpointData } from '../types/ifc';
 
+// ── Simple in-memory cache with TTL ──────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const cache = new Map<string, CacheEntry<unknown>>();
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCache<T>(key: string, data: T): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+function invalidateCache(prefix: string): void {
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
 // ── Models ──────────────────────────────────────────────────────
 
 export async function getModels(): Promise<DbIfcModel[]> {
@@ -31,13 +61,17 @@ export async function getModel(modelId: string): Promise<DbIfcModel | null> {
 // ── Elements (pre-computed from Python parser) ──────────────────
 
 export async function getElementIndex(modelId: string): Promise<ElementIndexEntry[]> {
+  const cacheKey = `elements:${modelId}`;
+  const cached = getCached<ElementIndexEntry[]>(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await supabase
     .from('ifc_elements')
     .select('express_id, ifc_type, name, floor_name, volume, area, height, length, materials, property_sets')
     .eq('model_id', modelId);
   if (error) throw error;
 
-  return (data || []).map((e) => ({
+  const result = (data || []).map((e) => ({
     expressId: e.express_id,
     ifcType: e.ifc_type,
     name: e.name || '',
@@ -49,6 +83,8 @@ export async function getElementIndex(modelId: string): Promise<ElementIndexEntr
     material: Array.isArray(e.materials) && e.materials.length > 0 ? e.materials[0] : '',
     searchableProps: flattenProps(e.property_sets),
   }));
+  setCache(cacheKey, result);
+  return result;
 }
 
 function flattenProps(psets: Record<string, Record<string, unknown>> | null): string[] {
@@ -83,48 +119,66 @@ export async function getElementProperties(
 // ── Quantification (uses Postgres views for fast aggregation) ──
 
 export async function getQuantificationByType(modelId: string): Promise<QuantificationRow[]> {
+  const cacheKey = `quant-type:${modelId}`;
+  const cached = getCached<QuantificationRow[]>(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await supabase
     .from('v_quantification_by_type')
     .select('*')
     .eq('model_id', modelId);
   if (error) throw error;
-  return (data || []).map((r) => ({
+  const result = (data || []).map((r) => ({
     groupKey: r.ifc_type,
     count: r.element_count,
     totalVolume: r.total_volume || 0,
     totalArea: r.total_area || 0,
     expressIds: r.express_ids || [],
   }));
+  setCache(cacheKey, result);
+  return result;
 }
 
 export async function getQuantificationByFloor(modelId: string): Promise<QuantificationRow[]> {
+  const cacheKey = `quant-floor:${modelId}`;
+  const cached = getCached<QuantificationRow[]>(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await supabase
     .from('v_quantification_by_floor')
     .select('*')
     .eq('model_id', modelId);
   if (error) throw error;
-  return (data || []).map((r) => ({
+  const result = (data || []).map((r) => ({
     groupKey: r.floor_name || 'No Floor',
     count: r.element_count,
     totalVolume: r.total_volume || 0,
     totalArea: r.total_area || 0,
     expressIds: r.express_ids || [],
   }));
+  setCache(cacheKey, result);
+  return result;
 }
 
 export async function getQuantificationByMaterial(modelId: string): Promise<QuantificationRow[]> {
+  const cacheKey = `quant-mat:${modelId}`;
+  const cached = getCached<QuantificationRow[]>(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await supabase
     .from('v_quantification_by_material')
     .select('*')
     .eq('model_id', modelId);
   if (error) throw error;
-  return (data || []).map((r) => ({
+  const result = (data || []).map((r) => ({
     groupKey: r.material || 'No Material',
     count: r.element_count,
     totalVolume: r.total_volume || 0,
     totalArea: r.total_area || 0,
     expressIds: r.express_ids || [],
   }));
+  setCache(cacheKey, result);
+  return result;
 }
 
 // ── Map DB element to frontend IfcElementInfo ────────────────────
@@ -181,13 +235,19 @@ export function dbElementToIfcElementInfo(db: DbIfcElement): IfcElementInfo {
 // ── Spatial tree ────────────────────────────────────────────────
 
 export async function getSpatialTree(modelId: string): Promise<DbSpatialNode[]> {
+  const cacheKey = `spatial:${modelId}`;
+  const cached = getCached<DbSpatialNode[]>(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await supabase
     .from('ifc_spatial_tree')
     .select('*')
     .eq('model_id', modelId)
     .order('elevation', { ascending: true });
   if (error) throw error;
-  return data || [];
+  const result = data || [];
+  setCache(cacheKey, result);
+  return result;
 }
 
 // ── Search (full-text) ──────────────────────────────────────────
